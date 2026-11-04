@@ -966,8 +966,11 @@ class GameState {
       const events = (typeof TERRAIN_EVENTS !== "undefined" && TERRAIN_EVENTS[type]) ? TERRAIN_EVENTS[type] : [];
       if (events.length) {
         const ev = events[Math.floor(Math.random() * events.length)];
+        this.flippedCells.add(key); // scopri la cella
         this.addLog("📜 Evento (" + type + ") su (" + u.q + "," + u.r + "): " + ev.name + " – " + (ev.passive || ""), true);
         this._applyTerrainEvent(ev, u, current);
+      } else {
+        this.flippedCells.add(key);
       } else {
         this.addLog("Nessun evento per zona " + type);
       }

@@ -264,6 +264,55 @@ function renderMostrissimi() {
   });
 }
 
+
+function openGraveyard(entityId) {
+  if (!game) return;
+  const e = game.entities.find(x => x.id === entityId);
+  if (!e) return;
+  const modal = document.getElementById("grave-modal");
+  const list = document.getElementById("grave-list");
+  const title = document.getElementById("grave-title");
+  if (!modal || !list) return;
+  title.textContent = "Cimitero di " + e.name + " (" + e.graveyard.length + " carte)";
+  list.innerHTML = "";
+  if (!e.graveyard.length) {
+    list.innerHTML = "<p style=\"color:var(--text-dim)\">Nessuna carta al cimitero.</p>";
+  } else {
+    e.graveyard.forEach((c) => {
+      const div = document.createElement("div");
+      div.className = "grave-card";
+      div.innerHTML = "<span class=\"color-dot color-" + (c.color||"yellow") + "\"></span> <strong>" + c.name + "</strong> <span style=\"color:var(--text-dim);font-size:0.8rem\">" + (c.type||"") + " · costo " + (c.cost||0) + "</span>";
+      div.onclick = () => showCardDetail(c);
+      list.appendChild(div);
+    });
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+}
+
+function showCardDetail(card) {
+  if (!card) return;
+  let modal = document.getElementById("card-detail-modal");
+  if (!modal) return;
+  const nameEl = document.getElementById("card-detail-name");
+  const bodyEl = document.getElementById("card-detail-body");
+  nameEl.textContent = card.name || "Carta";
+  const atk = (card.atk !== undefined) ? ((card.atk||0) + (card.permanentAtkBonus||0)) : null;
+  const hp = card.currentHp !== undefined ? card.currentHp : card.hp;
+  bodyEl.innerHTML =
+    "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
+    "<p><strong>Colore:</strong> " + (card.color || "-") + "</p>" +
+    "<p><strong>Costo:</strong> " + (card.currentCost !== undefined ? card.currentCost : (card.cost||0)) + "</p>" +
+    (atk !== null ? "<p><strong>ATK / PV:</strong> " + atk + " / " + (hp||0) + (card.shields ? " · Scudi " + card.shields : "") + "</p>" : "") +
+    (card.sacrifice ? "<p><strong>Sacrifici:</strong> " + card.sacrifice + "</p>" : "") +
+    "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + "</p>";
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+}
+window.showCardDetail = showCardDetail;
+window.openGraveyard = openGraveyard;
+
+
 window.onGameUpdate = renderGameState;
   renderGameState();
   if (!game.currentEntity.isHuman) {
@@ -324,6 +373,7 @@ function renderGameState() {
       el.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div><div class=\"meta\">" + card.type + " • Costo " + cost + "</div><div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect||"").substring(0,55) + "...</div>";
       if (game.currentEntity.isHuman && game.phase === "playing") {
         el.addEventListener("click", () => {
+          showCardDetail(card);
           game.selectCardFromHand(card.instanceId);
           renderGameState();
           MapRenderer.render();
@@ -433,6 +483,55 @@ function renderMostrissimi() {
     el.appendChild(div);
   });
 }
+
+
+function openGraveyard(entityId) {
+  if (!game) return;
+  const e = game.entities.find(x => x.id === entityId);
+  if (!e) return;
+  const modal = document.getElementById("grave-modal");
+  const list = document.getElementById("grave-list");
+  const title = document.getElementById("grave-title");
+  if (!modal || !list) return;
+  title.textContent = "Cimitero di " + e.name + " (" + e.graveyard.length + " carte)";
+  list.innerHTML = "";
+  if (!e.graveyard.length) {
+    list.innerHTML = "<p style=\"color:var(--text-dim)\">Nessuna carta al cimitero.</p>";
+  } else {
+    e.graveyard.forEach((c) => {
+      const div = document.createElement("div");
+      div.className = "grave-card";
+      div.innerHTML = "<span class=\"color-dot color-" + (c.color||"yellow") + "\"></span> <strong>" + c.name + "</strong> <span style=\"color:var(--text-dim);font-size:0.8rem\">" + (c.type||"") + " · costo " + (c.cost||0) + "</span>";
+      div.onclick = () => showCardDetail(c);
+      list.appendChild(div);
+    });
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+}
+
+function showCardDetail(card) {
+  if (!card) return;
+  let modal = document.getElementById("card-detail-modal");
+  if (!modal) return;
+  const nameEl = document.getElementById("card-detail-name");
+  const bodyEl = document.getElementById("card-detail-body");
+  nameEl.textContent = card.name || "Carta";
+  const atk = (card.atk !== undefined) ? ((card.atk||0) + (card.permanentAtkBonus||0)) : null;
+  const hp = card.currentHp !== undefined ? card.currentHp : card.hp;
+  bodyEl.innerHTML =
+    "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
+    "<p><strong>Colore:</strong> " + (card.color || "-") + "</p>" +
+    "<p><strong>Costo:</strong> " + (card.currentCost !== undefined ? card.currentCost : (card.cost||0)) + "</p>" +
+    (atk !== null ? "<p><strong>ATK / PV:</strong> " + atk + " / " + (hp||0) + (card.shields ? " · Scudi " + card.shields : "") + "</p>" : "") +
+    (card.sacrifice ? "<p><strong>Sacrifici:</strong> " + card.sacrifice + "</p>" : "") +
+    "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + "</p>";
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+}
+window.showCardDetail = showCardDetail;
+window.openGraveyard = openGraveyard;
+
 
 window.onGameUpdate = renderGameState;
 

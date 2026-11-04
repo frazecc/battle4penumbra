@@ -132,10 +132,26 @@ const MapRenderer = {
       });
     }
 
+    const key = q + "," + r;
+    // Scoperta = flippata (evento) OPPURE tempio proprio (sempre noto)
+    let discovered = false;
+    if (this.game) {
+      if (this.game.flippedCells && this.game.flippedCells.has(key)) discovered = true;
+      const human = this.game.entities.find(e => e.isHuman);
+      if (human && human.templeKey === key) discovered = true;
+      // Altare centrale noto a tutti una volta visibile
+      if (key === "0,0" && visible) discovered = true;
+    }
+
     let fill, stroke;
     if (!visible) {
+      // Nebbia: tutte identiche
       fill = "#15202B";
       stroke = "#1A2A3A";
+    } else if (!discovered) {
+      // Visibile ma NON ancora scoperta: aspetto anonimo identico
+      fill = "#2E3A47";
+      stroke = "#3D4F5F";
     } else if (type === "mountain") {
       fill = "#5D4037"; stroke = "#3E2723";
     } else if (type === "plain") {
@@ -175,7 +191,8 @@ const MapRenderer = {
     ctx.lineWidth = Math.max(0.7, 1 * this.scale);
     ctx.stroke();
 
-    if (visible) {
+    // Icone solo se cella scoperta (flippata) o tempio proprio
+    if (visible && discovered) {
       if (type === "city") {
         ctx.fillStyle = "#D32F2F";
         ctx.font = `bold ${Math.max(12, 16 * this.scale)}px Arial`;
@@ -240,20 +257,25 @@ const MapRenderer = {
       ctx.fillText(String(unit.shields), cx + radius * 0.7, cy - radius * 0.7);
     }
 
-    // Icona tempio proprietario in alto
-    if (owner.templeIcon) {
-      ctx.font = `${Math.max(10, 12 * this.scale)}px Arial`;
+    // Icona tempio proprietario (sempre, con fallback)
+    let tIcon = owner.templeIcon;
+    if (!tIcon && owner.templeKey && typeof TEMPLES !== "undefined") {
+      const t = TEMPLES[owner.templeKey];
+      if (t) tIcon = t.icon || t.label;
+    }
+    if (tIcon) {
+      ctx.font = `${Math.max(14, 18 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(owner.templeIcon, cx, cy - radius * 0.55);
+      ctx.fillText(tIcon, cx, cy - radius * 0.5);
     }
-    // ATK / PV in basso ben visibili
+    // ATK / PV in basso
     const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
     ctx.fillStyle = "#0D1B2A";
-    ctx.font = `bold ${Math.max(10, 12 * this.scale)}px Arial`;
+    ctx.font = `bold ${Math.max(11, 13 * this.scale)}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy + radius * 0.25);
+    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy + radius * 0.35);
   },
 
   _highlightHex(q, r, color) {
@@ -361,6 +383,8 @@ const MapRenderer = {
         const unit = human.field.find(u => u.q === q && u.r === r);
         if (unit) {
           this.game.selectUnit(unit.instanceId);
+          // Mostra dettaglio full screen
+          if (typeof showCardDetail === "function") showCardDetail(unit);
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
         }

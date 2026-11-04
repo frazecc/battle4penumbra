@@ -526,10 +526,26 @@ class GameState {
     this.addLog("Selezionato " + unit.name + ". Clicca cella adiacente (1 mana).");
   }
 
+  isCellDiscovered(q, r, entity) {
+    const key = q + "," + r;
+    if (CELL_TYPE.get(key) === "mountain") return true;
+    if (key === "0,0") return true;
+    if (entity && entity.templeKey === key) return true;
+    if (this.flippedCells && this.flippedCells.has(key)) return true;
+    return false;
+  }
+
   tryMoveOrAttack(q, r) {
     const e = this.currentEntity;
     if (!this.selectedUnit || !this.moveMode) return false;
     const unit = this.selectedUnit;
+    // Se sei su cella non scoperta non puoi muoverti oltre questo turno
+    if (!this.isCellDiscovered(unit.q, unit.r, e)) {
+      this.addLog("Cella inesplorata: non puoi muoverti oltre in questo turno! (si scopre a fine turno)");
+      this.moveMode = false;
+      this.selectedUnit = null;
+      return false;
+    }
     const dist = hexDistance(unit.q, unit.r, q, r);
     if (dist !== 1) { this.addLog("Solo 1 passo alla volta!"); return false; }
     if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }

@@ -92,7 +92,9 @@ const MapRenderer = {
     // Draw all known cells
     for (const [key, type] of CELL_TYPE) {
       const [q, r] = key.split(",").map(Number);
-      const visible = human ? this.game.isVisibleTo(human, q, r) : true;
+      // Montagne sempre visibili (sono molto alte)
+      let visible = human ? this.game.isVisibleTo(human, q, r) : true;
+      if (type === "mountain") visible = true;
       this._drawHex(q, r, type, visible);
     }
 
@@ -133,13 +135,13 @@ const MapRenderer = {
     }
 
     const key = q + "," + r;
-    // Scoperta = flippata (evento) OPPURE tempio proprio (sempre noto)
+    // Scoperta = flippata (evento) OPPURE tempio proprio OPPURE montagna (sempre nota)
     let discovered = false;
+    if (type === "mountain") discovered = true;
     if (this.game) {
       if (this.game.flippedCells && this.game.flippedCells.has(key)) discovered = true;
       const human = this.game.entities.find(e => e.isHuman);
       if (human && human.templeKey === key) discovered = true;
-      // Altare centrale noto a tutti una volta visibile
       if (key === "0,0" && visible) discovered = true;
     }
 
@@ -235,13 +237,18 @@ const MapRenderer = {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Artifact indicator (gold ring)
+    // Artefatto: corona dorata sopra
     if (owner.artifactAttachedTo === unit.instanceId || unit.hasArtifact || unit.type === "artefatto") {
       ctx.beginPath();
       ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
       ctx.strokeStyle = "#FFD700";
       ctx.lineWidth = 3;
       ctx.stroke();
+      // Corona
+      ctx.font = `${Math.max(14, 18 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("👑", cx, cy - radius - 2);
     }
 
     // Shield badge
@@ -384,7 +391,7 @@ const MapRenderer = {
         if (unit) {
           this.game.selectUnit(unit.instanceId);
           // Mostra dettaglio full screen
-          if (typeof showCardDetail === "function") showCardDetail(unit);
+          if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
         }

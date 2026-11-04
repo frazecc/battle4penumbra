@@ -290,8 +290,9 @@ function openGraveyard(entityId) {
   modal.style.display = "flex";
 }
 
-function showCardDetail(card) {
+function showCardDetail(card, opts) {
   if (!card) return;
+  opts = opts || {};
   let modal = document.getElementById("card-detail-modal");
   if (!modal) return;
   const nameEl = document.getElementById("card-detail-name");
@@ -299,16 +300,69 @@ function showCardDetail(card) {
   nameEl.textContent = card.name || "Carta";
   const atk = (card.atk !== undefined) ? ((card.atk||0) + (card.permanentAtkBonus||0)) : null;
   const hp = card.currentHp !== undefined ? card.currentHp : card.hp;
+  const isFieldUnit = opts.fromField && card.q !== undefined && card.r !== undefined;
   bodyEl.innerHTML =
     "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
     "<p><strong>Colore:</strong> " + (card.color || "-") + "</p>" +
     "<p><strong>Costo:</strong> " + (card.currentCost !== undefined ? card.currentCost : (card.cost||0)) + "</p>" +
     (atk !== null ? "<p><strong>ATK / PV:</strong> " + atk + " / " + (hp||0) + (card.shields ? " · Scudi " + card.shields : "") + "</p>" : "") +
     (card.sacrifice ? "<p><strong>Sacrifici:</strong> " + card.sacrifice + "</p>" : "") +
+    (isFieldUnit ? "<p><strong>Posizione:</strong> (" + card.q + "," + card.r + ")</p>" : "") +
     "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + "</p>";
+
+  // Pulsanti azione
+  let actions = document.getElementById("card-detail-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.id = "card-detail-actions";
+    actions.style.cssText = "display:flex;gap:10px;margin-top:20px;";
+    bodyEl.parentNode.appendChild(actions);
+  }
+  actions.innerHTML = "";
+  if (isFieldUnit && game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing") {
+    const btnCancel = document.createElement("button");
+    btnCancel.className = "btn";
+    btnCancel.style.flex = "1";
+    btnCancel.textContent = "Annulla";
+    btnCancel.onclick = () => {
+      game.selectedUnit = null;
+      game.moveMode = false;
+      closeCardDetail();
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+    };
+    const btnMove = document.createElement("button");
+    btnMove.className = "btn btn-primary";
+    btnMove.style.flex = "1";
+    btnMove.textContent = "Muovi";
+    btnMove.onclick = () => {
+      if (card.instanceId) game.selectUnit(card.instanceId);
+      closeCardDetail();
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+      // Messaggio guida
+      if (game) game.addLog("Clicca una cella adiacente per muovere (costa 1 mana).");
+      if (typeof renderGameState === "function") renderGameState();
+    };
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnMove);
+  } else {
+    const btnClose = document.createElement("button");
+    btnClose.className = "btn btn-primary";
+    btnClose.style.flex = "1";
+    btnClose.textContent = "Chiudi";
+    btnClose.onclick = () => closeCardDetail();
+    actions.appendChild(btnClose);
+  }
+
   modal.classList.remove("hidden");
   modal.style.display = "flex";
 }
+function closeCardDetail() {
+  const modal = document.getElementById("card-detail-modal");
+  if (modal) { modal.classList.add("hidden"); modal.style.display = "none"; }
+}
+
 window.showCardDetail = showCardDetail;
 window.openGraveyard = openGraveyard;
 
@@ -510,8 +564,9 @@ function openGraveyard(entityId) {
   modal.style.display = "flex";
 }
 
-function showCardDetail(card) {
+function showCardDetail(card, opts) {
   if (!card) return;
+  opts = opts || {};
   let modal = document.getElementById("card-detail-modal");
   if (!modal) return;
   const nameEl = document.getElementById("card-detail-name");
@@ -519,16 +574,69 @@ function showCardDetail(card) {
   nameEl.textContent = card.name || "Carta";
   const atk = (card.atk !== undefined) ? ((card.atk||0) + (card.permanentAtkBonus||0)) : null;
   const hp = card.currentHp !== undefined ? card.currentHp : card.hp;
+  const isFieldUnit = opts.fromField && card.q !== undefined && card.r !== undefined;
   bodyEl.innerHTML =
     "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
     "<p><strong>Colore:</strong> " + (card.color || "-") + "</p>" +
     "<p><strong>Costo:</strong> " + (card.currentCost !== undefined ? card.currentCost : (card.cost||0)) + "</p>" +
     (atk !== null ? "<p><strong>ATK / PV:</strong> " + atk + " / " + (hp||0) + (card.shields ? " · Scudi " + card.shields : "") + "</p>" : "") +
     (card.sacrifice ? "<p><strong>Sacrifici:</strong> " + card.sacrifice + "</p>" : "") +
+    (isFieldUnit ? "<p><strong>Posizione:</strong> (" + card.q + "," + card.r + ")</p>" : "") +
     "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + "</p>";
+
+  // Pulsanti azione
+  let actions = document.getElementById("card-detail-actions");
+  if (!actions) {
+    actions = document.createElement("div");
+    actions.id = "card-detail-actions";
+    actions.style.cssText = "display:flex;gap:10px;margin-top:20px;";
+    bodyEl.parentNode.appendChild(actions);
+  }
+  actions.innerHTML = "";
+  if (isFieldUnit && game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing") {
+    const btnCancel = document.createElement("button");
+    btnCancel.className = "btn";
+    btnCancel.style.flex = "1";
+    btnCancel.textContent = "Annulla";
+    btnCancel.onclick = () => {
+      game.selectedUnit = null;
+      game.moveMode = false;
+      closeCardDetail();
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+    };
+    const btnMove = document.createElement("button");
+    btnMove.className = "btn btn-primary";
+    btnMove.style.flex = "1";
+    btnMove.textContent = "Muovi";
+    btnMove.onclick = () => {
+      if (card.instanceId) game.selectUnit(card.instanceId);
+      closeCardDetail();
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+      // Messaggio guida
+      if (game) game.addLog("Clicca una cella adiacente per muovere (costa 1 mana).");
+      if (typeof renderGameState === "function") renderGameState();
+    };
+    actions.appendChild(btnCancel);
+    actions.appendChild(btnMove);
+  } else {
+    const btnClose = document.createElement("button");
+    btnClose.className = "btn btn-primary";
+    btnClose.style.flex = "1";
+    btnClose.textContent = "Chiudi";
+    btnClose.onclick = () => closeCardDetail();
+    actions.appendChild(btnClose);
+  }
+
   modal.classList.remove("hidden");
   modal.style.display = "flex";
 }
+function closeCardDetail() {
+  const modal = document.getElementById("card-detail-modal");
+  if (modal) { modal.classList.add("hidden"); modal.style.display = "none"; }
+}
+
 window.showCardDetail = showCardDetail;
 window.openGraveyard = openGraveyard;
 

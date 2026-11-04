@@ -147,13 +147,13 @@ const MapRenderer = {
 
     let fill, stroke;
     if (!visible) {
-      // Nebbia: tutte identiche
-      fill = "#15202B";
-      stroke = "#1A2A3A";
+      // FOG OF WAR: nera e "fumosa"
+      fill = "#05070A";
+      stroke = "#0A0E14";
     } else if (!discovered) {
-      // Visibile ma NON ancora scoperta: aspetto anonimo identico
-      fill = "#2E3A47";
-      stroke = "#3D4F5F";
+      // Cella VISTA ma da scoprire: più chiara + "?"
+      fill = "#4A6741";
+      stroke = "#6B8F71";
     } else if (type === "mountain") {
       fill = "#5D4037"; stroke = "#3E2723";
     } else if (type === "plain") {
@@ -193,6 +193,23 @@ const MapRenderer = {
     ctx.lineWidth = Math.max(0.7, 1 * this.scale);
     ctx.stroke();
 
+    // "?" sulle celle da scoprire (visibili ma non flippate)
+    if (visible && !discovered && type !== "mountain") {
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.font = `bold ${Math.max(14, 18 * this.scale)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("?", cx, cy);
+    }
+    // Overlay fumoso sulla fog
+    if (!visible) {
+      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(verts[i].x, verts[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
     // Icone solo se cella scoperta (flippata) o tempio proprio
     if (visible && discovered) {
       if (type === "city") {

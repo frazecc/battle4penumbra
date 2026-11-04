@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 008
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 009
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -162,6 +162,11 @@ situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+
+009 – Fine partita: fix "Torna alla Home" (display inline bloccava il click).
+      Nuovo tasto "Guarda la mappa" per leggere il log dopo la sconfitta.
+      Fog of war nera/fumosa; celle da scoprire verdi-grigie con "?".
+
 
 008 – Fix app.js corrotto. Carte in mano: Evoca / Lancia magia / Lega artefatto / Annulla
       (non "lancia magia" sui mostri). Muovi disabilitato + spiegazione se cella non scoperta.

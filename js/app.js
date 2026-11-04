@@ -560,13 +560,13 @@ window.onGameEnd = function(g) {
   modal.style.display = "flex";
   if (g.winner) {
     if (g.winner.isHuman) {
-      title.textContent = "🏆 Vittoria!";
+      title.textContent = "Vittoria!";
       title.style.color = "var(--accent)";
       msg.textContent = "Hai sconfitto tutte le altre entità e hai mantenuto l'Artefatto!";
     } else {
       title.textContent = "Sconfitta";
       title.style.color = "var(--danger)";
-      msg.textContent = g.winner.name + " ha vinto la partita.";
+      msg.textContent = (g.winner.name || "Un avversario") + " ha vinto la partita." + (g.loseReason ? " (" + g.loseReason + ")" : "");
     }
   } else {
     title.textContent = "Fine Partita";
@@ -574,12 +574,40 @@ window.onGameEnd = function(g) {
   }
 };
 
-document.getElementById("btn-back-to-home")?.addEventListener("click", () => {
+function closeEndgameModal() {
   const modal = document.getElementById("endgame-modal");
   if (modal) {
     modal.classList.add("hidden");
     modal.style.display = "none";
   }
+}
+
+document.getElementById("btn-view-map")?.addEventListener("click", () => {
+  // Chiudi solo il popup: resti sulla mappa e puoi leggere il log
+  closeEndgameModal();
+  if (typeof renderGameState === "function") renderGameState();
+  if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  if (game) game.addLog("Puoi scorrere il log a destra per capire cosa è successo. Usa il menu quando vuoi tornare alla Home.");
+  // Mostra un piccolo banner per tornare a casa se serve
+  let bar = document.getElementById("postgame-bar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "postgame-bar";
+    bar.style.cssText = "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:998;display:flex;gap:10px;background:rgba(13,27,42,0.95);border:1px solid var(--border);border-radius:12px;padding:10px 16px;";
+    bar.innerHTML = '<button id="btn-postgame-home" class="btn btn-primary">Torna alla Home</button>';
+    document.body.appendChild(bar);
+    document.getElementById("btn-postgame-home").onclick = () => {
+      bar.remove();
+      game = null;
+      showScreen("home");
+    };
+  }
+});
+
+document.getElementById("btn-back-to-home")?.addEventListener("click", () => {
+  closeEndgameModal();
+  const bar = document.getElementById("postgame-bar");
+  if (bar) bar.remove();
   game = null;
   showScreen("home");
 });

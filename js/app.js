@@ -127,6 +127,7 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
     numAI: numAI,
     numFallenTemples: setupFallen
   });
+  draftFirstMessageShown = false; // reset per ogni nuova partita
   game.startDraft();
   renderDraft();
   showScreen("draft");
@@ -135,6 +136,47 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
 document.getElementById("btn-back-home")?.addEventListener("click", () => showScreen("home"));
 
 // ---------- DRAFT ----------
+// Flag per sapere se abbiamo già mostrato il messaggio iniziale del draft
+let draftFirstMessageShown = false;
+
+function showDraftAtmosphere(message, onContinue) {
+  // Rimuovi eventuale overlay precedente
+  let overlay = document.getElementById("draft-atmosphere-overlay");
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement("div");
+  overlay.id = "draft-atmosphere-overlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.92);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    font-family: Georgia, serif;
+  `;
+
+  overlay.innerHTML = `
+    <div style="max-width:520px; color:#E0D6C8; font-size:1.35rem; line-height:1.6; margin-bottom:32px; letter-spacing:0.03em;">
+      ${message}
+    </div>
+    <button id="draft-ho-capito" class="btn btn-primary" style="padding:12px 32px; font-size:1.1rem;">
+      Ho capito
+    </button>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Nascondi le bustine mentre c'è l'overlay
+  const container = document.getElementById("packs-container");
+  if (container) container.style.visibility = "hidden";
+
+  document.getElementById("draft-ho-capito").onclick = () => {
+    overlay.remove();
+    if (container) container.style.visibility = "visible";
+    if (typeof onContinue === "function") onContinue();
+  };
+}
+
 function renderDraft() {
   if (!game || !game.draft) return;
   const picker = game.getDraftCurrentPicker();
@@ -153,12 +195,14 @@ function renderDraft() {
 
   const container = document.getElementById("packs-container");
   container.innerHTML = "";
+  container.style.visibility = "visible";
+
+  // Mostra solo le 3 bustine selezionabili
   game.draft.packs.forEach((pack, pi) => {
     const packEl = document.createElement("div");
     packEl.className = "pack pack-sealed" + (picker.isHuman ? " active-pack" : "");
     packEl.style.cursor = picker.isHuman ? "pointer" : "default";
 
-    // Solo colore della bustina, niente carte visibili
     packEl.innerHTML =
       '<div class="pack-sealed-inner color-bg-' + pack.color + '">' +
         '<div class="pack-sealed-label">BUSTINA</div>' +
@@ -169,9 +213,28 @@ function renderDraft() {
 
     if (picker.isHuman) {
       packEl.addEventListener("click", () => {
+        // Prima scelta umana: messaggio speciale
+        const isFirstHumanPick = !draftFirstMessageShown;
         game.draftPickPack(pi);
-        renderDraft();
-        if (game.phase === "playing") startGameUI();
+
+        if (isFirstHumanPick) {
+          draftFirstMessageShown = true;
+          showDraftAtmosphere(
+            "Abbraccia l'eternità.<br>Assaggia il potere.",
+            () => {
+              renderDraft();
+              if (game.phase === "playing") startGameUI();
+            }
+          );
+        } else {
+          showDraftAtmosphere(
+            "Le altre entità stanno ancora valutando quale destino percorrere.",
+            () => {
+              renderDraft();
+              if (game.phase === "playing") startGameUI();
+            }
+          );
+        }
       });
     }
     container.appendChild(packEl);
@@ -184,7 +247,7 @@ function renderDraft() {
     picksEl.style.display = "none";
   }
 
-  // AI auto
+  // AI auto (dopo che l'umano ha chiuso l'overlay, renderDraft viene richiamato)
   if (picker && !picker.isHuman && game.draft.currentPick < game.draft.totalPicksNeeded) {
     setTimeout(() => {
       game._processAIDraftPacks();
@@ -484,15 +547,28 @@ function renderGameState() {
     handEl.innerHTML = "";
     const human = game.entities.find(e => e.isHuman);
     if (human) {
-      human.hand.forEach(card => {
+      // Ordina sempre per costo crescente (sinistra = più economiche)
+      const sortedHand = [...human.hand].sort((a, b) => {
+        const ca = a.currentCost !== undefined ? a.currentCost : (a.cost || 0);
+        const cb = b.currentCost !== undefined ? b.currentCost : (b.cost || 0);
+        return ca - cb;
+      });
+
+      sortedHand.forEach(card => {
         const el = document.createElement("div");
-        el.className = "hand-card";
+        const cost = card.currentCost !== undefined ? card.currentCost : (card.cost || 0);
+        const playable = game.isCardPlayable ? game.isCardPlayable(card, human) : false;
+
+        el.className = "hand-card" + (playable ? " playable" : " unplayable");
         if (game.selectedCard && game.selectedCard.instanceId === card.instanceId) {
-          el.style.borderColor = "var(--accent)";
-          el.style.boxShadow = "0 0 10px rgba(255,213,79,0.4)";
+          el.classList.add("selected");
         }
-        const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
-        el.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div><div class=\"meta\">" + card.type + " • Costo " + cost + "</div><div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect||"").substring(0,55) + "...</div>";
+
+        el.innerHTML =
+          "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div>" +
+          "<div class=\"meta\">" + card.type + " • Costo " + cost + "</div>" +
+          "<div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect || "").substring(0, 55) + "...</div>";
+
         el.addEventListener("click", () => {
           showCardDetail(card, { fromHand: true });
         });

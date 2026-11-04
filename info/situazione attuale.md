@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 012
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 013
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -51,6 +51,10 @@ DRAFT
 - Si vedono solo i COLORI delle 3 bustine (carte nascoste)
 - Non si vedono le carte proprie né quelle altrui durante il draft
 - 3 bustine a testa = 9 carte + Artefatto in mano
+- Tra una scelta e l’altra: overlay a schermo intero con messaggio atmosferico
+  + bottone “Ho capito”. Primo messaggio: “Abbraccia l’eternità. Assaggia il potere.”
+  Successivi: “Le altre entità stanno ancora valutando quale destino percorrere.”
+  Durante l’overlay le bustine scompaiono.
 
 TEMPLI E PROPRIETÀ
 - 4 templi nominati (NON sono “acqua generica”):
@@ -65,7 +69,7 @@ MAPPA E FOG
 - Celle non scoperte: aspetto anonimo identico (niente icone di zona)
 - Scoperta cella: a fine turno con evento (o tempio proprio / altare / montagna)
 - Se sei su cella NON scoperta non puoi muoverti oltre in quel turno
-- Zoom minimo abbassato (0.25) per vedere meglio la mappa
+- Zoom minimo abbassato (0.25)
 
 ZONE SPECIALI (1 esagono ciascuna, scoperte solo dopo flip)
 - Cimitero, Rovine, Statua, Colosseo, Circolo Rituale, Santuario, Jungla, Villaggio
@@ -86,35 +90,28 @@ CARTE E REGOLE BASE
 - Trappole: popup base nel turno avversario (da completare)
 - Effetti ETB / alcuni effectId mappati (non tutti i casi complessi)
 
-AVVIZZITO (nuova regola)
+AVVIZZITO
 - Le creature possono essere “avvizzite” (stanche/tappate).
 - Mentre avvizzita: non può muoversi né attaccare (può solo difendere).
-- Diventa avvizzita quando:
-  a) entra in un esagono non ancora scoperto (quello con “?”)
-  b) attacca
-- Mostri normali entrano in campo NON avvizziti
-- Mostrissimi entrano in campo AVVIZZITI (indicato in dettaglio carta)
-- A inizio del proprio turno tutte le proprie creature si “svegliano” (non più avvizzite)
-- Visivo: cerchio grigio + “Z” sulla mappa
+- Diventa avvizzita quando entra in un esagono non scoperto o quando attacca.
+- Mostri normali entrano NON avvizziti; Mostrissimi entrano AVVIZZITI.
+- A inizio del proprio turno tutte le proprie creature si svegliano.
+- Visivo: cerchio grigio + “Z”
+
+MANO E CARTE GIOCABILI (UX)
+- Le carte in mano sono sempre ordinate per costo crescente (sinistra = più economiche)
+- Una carta è “giocabile” solo se è legalmente castabile in questo momento
+  (mana sufficiente + bersaglio/piazzamento valido)
+- Carte giocabili: 50% più grandi + alone dorato lampeggiante
+- Carte non giocabili: restano visibili ma più piccole e spente (opache/grigie)
 
 CADUTI
 - Niente carte in mano, non possono vincere
 - Creature restano; a inizio turno token sul tempio se libero
 - IA caduta: insegue un nemico avvistato, altrimenti passo casuale
 - Umano caduto: modal immediato “Hai perso” + Guarda mappa / Torna Home.
-  Se non ci sono più umani vivi la partita si chiude subito (le IA non giocano oltre).
-  Guarda mappa: fog congelata + possibilità di cliccare le creature visibili per vedere i dettagli.
-
-UI
-- Mappa con auto-fit allo schermo (PC e mobile, migliorabile)
-- Click carta in mano o creatura in campo → anteprima dettagli
-- Sotto anteprima creatura in campo: pulsanti Annulla / Muovi
-- Cimitero privato (bottone nel pannello), carte cliccabili a dettaglio
-- Placeholder “Potere fazione (placeholder)” sotto ogni nome
-- Passive degli eventi elencate sotto il nome
-- Fine partita: “Guarda la mappa” mostra tutta l’UI con fog of war
-  CONGELATA esattamente al momento della sconfitta (nessuna info extra)
-- Fix: in modalità Muovi il click sulla mappa non riapre più l’anteprima del mostro
+  Se non ci sono più umani vivi la partita si chiude subito.
+  Guarda mappa: fog congelata + click sulle creature visibili per dettagli.
 
 
 ================================================================================
@@ -122,12 +119,12 @@ COSE DA FARE A BREVE (prossimo lavoro utile)
 ================================================================================
 Ordine consigliato (da confermare con FRA quando chiede “cosa facciamo ora?”):
 
-1. Sistemare / bilanciare UX mappa su mobile e dimensione carte in mano (ancora scomode)
+1. Sistemare ulteriormente UX mappa su mobile (se ancora scomoda)
 2. Completare timing trappole e casi limite
 3. Completare effetti carte ancora “a metà”
 4. Circoli Rituali / zone: verificare che gli eventi partano sempre in partita
 5. Entità-caduta: rifinire comportamenti se emergono bug in playtest
-6. UI più chiara per “cosa posso fare ora” (suggerimenti di turno)
+6. UI più chiara per “cosa posso fare ora” (suggerimenti di turno) – parzialmente fatto con carte illuminate
 
 
 ================================================================================
@@ -138,8 +135,8 @@ COSE LASCIATE PER IL FUTURO (non toccare finché non richieste)
 - Multiplayer umano: 1v1, 1v1v1, 1v1v1v1
 - Classifica
 - Codex (carte & regole in-app)
-- Catalogo Mostrissimi ampliato verso ~100, senza costi sacrificio duplicati in pool
-- Potere fazione REALE in base ai colori del mazzo (togliere il placeholder)
+- Catalogo Mostrissimi ampliato verso ~100
+- Potere fazione REALE in base ai colori del mazzo
 - PNG / avatar legati ai colori del mazzo
 - Inventario oggetti narrativi più ricco legato alle quest
 - Animazioni di movimento / combattimento / draft
@@ -151,7 +148,7 @@ DECISIONI DI DESIGN GIÀ PRESE (non rinegoziare senza FRA)
 ================================================================================
 - Sempre 4 templi / 4 entità
 - Templi: Cielo, Luna, Guerra, Acqua (icone dedicate)
-- Draft: bustine intere, solo colore visibile, stile 7 Wonders (orario/antiorario)
+- Draft: bustine intere, solo colore visibile, stile 7 Wonders + messaggi atmosferici
 - Artefatto legato a creatura in campo
 - Mostri solo sul tempio
 - Fog dinamica attorno creature + tempio; montagne sempre visibili
@@ -161,11 +158,9 @@ DECISIONI DI DESIGN GIÀ PRESE (non rinegoziare senza FRA)
 - Token 1/1 inizio turno solo se tempio libero
 - Celle occupate sempre bloccate (anche alleate)
 - Consegne solo file modificati + situazione-attuale.txt in cartella numerata
-- Quando umano diventa Caduto: modal “Hai perso” immediato, mappa congelata
-  alla visione del momento della sconfitta, niente spettatore, partita chiusa
-  se non restano umani.
 - Primo movimento di ogni creatura per turno è gratuito
-- Regola Avvizzito come descritta sopra
+- Regola Avvizzito
+- Carte giocabili illuminate e più grandi; ordinate per costo
 
 
 ================================================================================
@@ -179,58 +174,43 @@ battle4penumbra/
   js/map.js       → canvas mappa
   js/app.js       → UI, draft, cimitero, dettagli
 consegne/
-  001 … 012/      → solo file da caricare di quella tornata
+  001 … 013/      → solo file da caricare di quella tornata
 situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 
 
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+013 – UX carte + draft atmosferico:
+      - Carte in mano ordinate per costo crescente
+      - Carte giocabili: 50% più grandi + alone dorato lampeggiante
+      - Carte non giocabili: più piccole e spente (restano visibili)
+      - Draft: overlay a schermo intero con messaggio + “Ho capito”
+        Primo: “Abbraccia l’eternità. Assaggia il potere.”
+        Dopo: “Le altre entità stanno ancora valutando quale destino percorrere.”
+      File modificati: js/game.js, js/app.js, css/style.css
+
+
 012 – Nuove regole + fix UX:
-      - Primo movimento di ogni creatura per turno è gratuito
-      - Sistema Avvizzito (entra su “?”, attacca; Mostrissimi entrano avvizziti; si sveglia a inizio turno)
-      - Fix: click in modalità Muovi non riapre più l’anteprima
-      - Dopo “Guarda la mappa” si possono cliccare le creature visibili per vedere i dettagli
-      - Zoom minimo abbassato a 0.25
-      - Visivo avvizzita: cerchio grigio + “Z”
-      File modificati: js/game.js, js/app.js, js/map.js
+      - Primo movimento gratuito
+      - Sistema Avvizzito
+      - Fix click in modalità Muovi
+      - Dettagli creature dopo Guarda mappa
+      - Zoom minimo 0.25
+      File: js/game.js, js/app.js, js/map.js
 
 
-011 – Quando l’umano diventa Caduto:
-      - Modal immediato “Hai perso” con testo chiaro
-      - Snapshot della fog of war (frozenVisibility) al momento esatto della sconfitta
-      - “Guarda la mappa” mostra tutta l’UI con visione congelata (solo info che aveva)
-      - Se non restano umani la partita si chiude subito (le IA non giocano oltre)
-      - Interazioni di gioco disabilitate
-      File modificati: js/game.js, js/app.js
-
-
-010 – Fine partita: bottoni Home / Guarda mappa collegati con onclick al momento
-      in cui si apre il modal (il addEventListener a caricamento pagina non partiva).
-
-
-009 – Fine partita: fix "Torna alla Home" (display inline bloccava il click).
-      Nuovo tasto "Guarda la mappa" per leggere il log dopo la sconfitta.
-      Fog of war nera/fumosa; celle da scoprire verdi-grigie con "?".
-
-
-008 – Fix app.js corrotto. Carte in mano: Evoca / Lancia magia / Lega artefatto / Annulla
-      (non "lancia magia" sui mostri). Muovi disabilitato + spiegazione se cella non scoperta.
-      Flip fine turno: tutte le celle occupate dalle creature del giocatore.
-
-
-007 – Pulsanti sotto carte in mano (Evoca / Lancia magia / Lega artefatto / Annulla).
-      Fine turno: flip di TUTTE le celle con creature del giocatore + evento zona.
-      Re-render mappa dopo fine turno. Rimossi duplicati in app.js.
-
-006 – Montagne sempre visibili; corona Artefatto; blocco movimento su
-      cella non scoperta; pulsanti Annulla/Muovi sotto anteprima.
-005 – Fix SyntaxError (else doppio) che impediva “Inizia Draft”.
-004 – Celle anonime fino a scoperta; dettaglio carte; cimitero UI.
-003 – Turn order orario, draft 7 Wonders, templi nominati, zone, eventi,
-      caduti, placeholder potere fazione.
-002 – Mappa più grande, draft solo colore, fog dinamica, summon sul tempio.
-001 – Setup caduti, draft bustine, token 1/1, artefatto legato.
+011 – Caduto umano: modal immediato + fog congelata
+010 – Fine partita bottoni onclick
+009 – Guarda mappa + fog nera
+008 – Fix app.js + pulsanti mano
+007 – Pulsanti sotto carte + flip fine turno
+006 – Montagne sempre visibili + corona
+005 – Fix SyntaxError
+004 – Celle anonime + dettaglio + cimitero
+003 – Turn order + draft 7 Wonders + templi + zone
+002 – Mappa grande + draft colore + fog dinamica
+001 – Setup caduti + draft + token + artefatto
 
 
 ================================================================================

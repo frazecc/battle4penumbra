@@ -215,6 +215,64 @@ class GameState {
     return false;
   }
 
+  /** Ritorna true se la carta può essere giocata legalmente in questo momento dal giocatore corrente */
+  isCardPlayable(card, entity) {
+    if (!card || !entity || entity.isFallen) return false;
+    if (this.phase !== "playing") return false;
+    if (this.currentEntity !== entity) return false;
+
+    const cost = card.currentCost !== undefined ? card.currentCost : (card.cost || 0);
+    if (!entity.canPay(cost)) return false;
+
+    const t = (card.type || "").toLowerCase();
+
+    if (t === "trappola") return false; // si attivano solo nel turno avversario
+
+    if (t === "mostro") {
+      // Deve esistere il tempio libero
+      if (!entity.templeKey) return false;
+      const [tq, tr] = entity.templeKey.split(",").map(Number);
+      if (this.getUnitAt(tq, tr)) return false;
+      return true;
+    }
+
+    if (t === "mostrissimo") {
+      // Serve almeno un posto valido (tempio / altare / circolo) libero + sacrifici
+      const sac = card.sacrifice || 0;
+      const permanents = entity.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
+      if (permanents.length < sac) return false;
+      // Cerca almeno una cella valida libera
+      for (const [key, type] of CELL_TYPE) {
+        if (type === "temple" || type === "city" || type === "circolo") {
+          const [q, r] = key.split(",").map(Number);
+          if (!this.getUnitAt(q, r)) return true;
+        }
+      }
+      return false;
+    }
+
+    if (t === "artefatto") {
+      // Serve almeno una creatura propria in campo (non artefatto)
+      return entity.field.some(u => u.type === "mostro" || u.type === "mostrissimo" || u.id === "token_free");
+    }
+
+    if (t === "maledizione") {
+      // Per semplicità: se ha bisogno di bersaglio, controlla che esista almeno un nemico visibile
+      if (card.needsTarget) {
+        for (const ent of this.entities) {
+          if (ent.id === entity.id || ent.isFallen) continue;
+          for (const u of ent.field) {
+            if (this.isVisibleTo(entity, u.q, u.r)) return true;
+          }
+        }
+        return false;
+      }
+      return true; // effetti globali o senza bersaglio
+    }
+
+    return true; // altri tipi generici
+  }
+
   startDraft() {
     this.phase = "draft";
     // 7 Wonders style: 3 giri di bustine

@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 007
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 008
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -162,6 +162,11 @@ situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+
+008 – Fix app.js corrotto. Carte in mano: Evoca / Lancia magia / Lega artefatto / Annulla
+      (non "lancia magia" sui mostri). Muovi disabilitato + spiegazione se cella non scoperta.
+      Flip fine turno: tutte le celle occupate dalle creature del giocatore.
+
 
 007 – Pulsanti sotto carte in mano (Evoca / Lancia magia / Lega artefatto / Annulla).
       Fine turno: flip di TUTTE le celle con creature del giocatore + evento zona.

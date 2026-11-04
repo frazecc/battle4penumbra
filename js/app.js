@@ -194,13 +194,18 @@ function renderDraft() {
   }
 }
 
+
 // ---------- GAME UI ----------
 function startGameUI() {
   showScreen("game");
   MapRenderer.init("gameCanvas", game);
-  // Fit mappa allo schermo
   setTimeout(() => { MapRenderer.center(); MapRenderer.render(); }, 50);
-  
+  renderGameState();
+  if (game && !game.currentEntity.isHuman) {
+    setTimeout(() => game.runAITurn(), 900);
+  }
+}
+
 // ---------- TRAP POPUP ----------
 window.onTrapPrompt = function(pending) {
   const modal = document.getElementById("trap-modal");
@@ -244,16 +249,17 @@ function renderMostrissimi() {
   const el = document.getElementById("mostrissimi-panel");
   if (!el || !game) return;
   el.innerHTML = "<div style=\"font-weight:700;color:var(--accent);margin-bottom:8px;\">Mostrissimi (Pool)</div>";
-  game.mostrissimiPool.forEach((m, i) => {
+  (game.mostrissimiPool || []).forEach(m => {
     const div = document.createElement("div");
     div.className = "hand-card";
-    div.style.cursor = "pointer";
-    div.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + m.color + "\"></span>" + m.name + "</div>" +
+    div.style.marginBottom = "8px";
+    div.innerHTML =
+      "<div class=\"name\"><span class=\"color-dot color-" + m.color + "\"></span>" + m.name + "</div>" +
       "<div class=\"meta\">Sac " + m.sacrifice + " • " + m.atk + "/" + m.hp + "</div>" +
       "<div class=\"meta\" style=\"font-size:0.7rem;\">" + (m.effect||"").substring(0,40) + "...</div>";
     div.onclick = () => {
       if (!game.currentEntity.isHuman) return;
-      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare o Tempio per evocarlo (servono " + m.sacrifice + " sacrifici).");
+      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare/Tempio/Circolo (servono " + m.sacrifice + " sacrifici).");
       game.selectedCard = { ...m, instanceId: m.instanceId + "_sum_" + Date.now() };
       game.playMode = true;
       game.moveMode = false;
@@ -263,7 +269,6 @@ function renderMostrissimi() {
     el.appendChild(div);
   });
 }
-
 
 function openGraveyard(entityId) {
   if (!game) return;
@@ -290,6 +295,11 @@ function openGraveyard(entityId) {
   modal.style.display = "flex";
 }
 
+function closeCardDetail() {
+  const modal = document.getElementById("card-detail-modal");
+  if (modal) { modal.classList.add("hidden"); modal.style.display = "none"; }
+}
+
 function showCardDetail(card, opts) {
   if (!card) return;
   opts = opts || {};
@@ -300,8 +310,9 @@ function showCardDetail(card, opts) {
   nameEl.textContent = card.name || "Carta";
   const atk = (card.atk !== undefined) ? ((card.atk||0) + (card.permanentAtkBonus||0)) : null;
   const hp = card.currentHp !== undefined ? card.currentHp : card.hp;
-  const isFieldUnit = opts.fromField && card.q !== undefined && card.r !== undefined;
+  const isFieldUnit = !!(opts.fromField && card.q !== undefined && card.r !== undefined);
   const fromHand = !!opts.fromHand;
+  const t = (card.type || "").toLowerCase();
 
   bodyEl.innerHTML =
     "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
@@ -321,32 +332,54 @@ function showCardDetail(card, opts) {
   }
   actions.innerHTML = "";
 
-  const canAct = game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing";
+  const canAct = !!(game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing");
 
-  function addBtn(label, primary, fn) {
+  function addBtn(label, primary, fn, disabled, title) {
     const b = document.createElement("button");
     b.className = "btn" + (primary ? " btn-primary" : "");
     b.style.flex = "1";
     b.style.minWidth = "120px";
     b.textContent = label;
-    b.onclick = fn;
+    if (disabled) {
+      b.disabled = true;
+      b.style.opacity = "0.5";
+      b.style.cursor = "not-allowed";
+      if (title) b.title = title;
+    } else {
+      b.onclick = fn;
+    }
     actions.appendChild(b);
   }
 
   if (isFieldUnit && canAct) {
+    // Spiegazione se non può muoversi
+    let moveBlocked = false;
+    let moveReason = "";
+    if (game && typeof game.isCellDiscovered === "function") {
+      if (!game.isCellDiscovered(card.q, card.r, game.currentEntity)) {
+        moveBlocked = true;
+        moveReason = "Cella non ancora scoperta: non puoi muoverti oltre in questo turno (si scopre a fine turno).";
+      }
+    }
+    if (moveBlocked) {
+      const note = document.createElement("p");
+      note.style.cssText = "width:100%;color:#FFB74D;font-size:0.9rem;margin:0 0 8px 0;";
+      note.textContent = moveReason;
+      actions.appendChild(note);
+    }
     addBtn("Annulla", false, () => {
       game.selectedUnit = null;
       game.moveMode = false;
       closeCardDetail();
       renderGameState();
-      MapRenderer.render();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
     });
     addBtn("Muovi", true, () => {
       if (card.instanceId) game.selectUnit(card.instanceId);
       closeCardDetail();
       renderGameState();
-      MapRenderer.render();
-    });
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+    }, moveBlocked, moveReason);
   } else if (fromHand && canAct) {
     addBtn("Annulla", false, () => {
       game.selectedCard = null;
@@ -355,27 +388,26 @@ function showCardDetail(card, opts) {
       closeCardDetail();
       renderGameState();
     });
-    const t = card.type;
     if (t === "mostro" || t === "mostrissimo") {
       addBtn("Evoca", true, () => {
         game.selectCardFromHand(card.instanceId);
         closeCardDetail();
         renderGameState();
-        MapRenderer.render();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
       });
     } else if (t === "maledizione") {
       addBtn("Lancia magia", true, () => {
         game.selectCardFromHand(card.instanceId);
         closeCardDetail();
         renderGameState();
-        MapRenderer.render();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
       });
     } else if (t === "artefatto") {
       addBtn("Lega artefatto", true, () => {
         game.selectCardFromHand(card.instanceId);
         closeCardDetail();
         renderGameState();
-        MapRenderer.render();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
       });
     } else if (t === "trappola") {
       addBtn("Ok (si attiva nel turno avversario)", true, () => {
@@ -398,94 +430,80 @@ function showCardDetail(card, opts) {
   modal.style.display = "flex";
 }
 
-function closeCardDetail() {
-  const modal = document.getElementById("card-detail-modal");
-  if (modal) { modal.classList.add("hidden"); modal.style.display = "none"; }
-}
-
 window.showCardDetail = showCardDetail;
 window.openGraveyard = openGraveyard;
-
-
 window.onGameUpdate = renderGameState;
-  renderGameState();
-  if (!game.currentEntity.isHuman) {
-    setTimeout(() => game.runAITurn(), 900);
-  }
-}
 
 function renderGameState() {
   if (!game) return;
 
-  // Entities
   const left = document.getElementById("entities-panel");
-  left.innerHTML = "";
-  game.entities.forEach((e, idx) => {
-    const div = document.createElement("div");
-    div.className = "entity-panel" + (idx === game.turnIndex ? " active-turn" : "");
-    const nameClass = e.isFallen ? "fallen" : (e.isHuman ? "human" : "ai");
-    const icon = e.templeIcon || "";
-    const passives = (e.passives && e.passives.length)
-      ? e.passives.slice(-3).map(p => "<div class=\"passive-line\">" + p + "</div>").join("")
-      : "";
-    div.innerHTML =
-      "<div class=\"entity-name " + nameClass + "\">" + icon + " " + e.name + (e.isFallen?" (Caduto)":"") + "</div>" +
-      "<div class=\"entity-stats\"><span>💧 " + e.mana + "/" + e.manaMax + "</span><span>🃏 " + (e.isFallen?0:e.hand.length) + "</span><span>⚔️ " + e.field.length + "</span></div>" +
-      "<div class=\"entity-power\">" + (e.factionPower || "Potere fazione (placeholder)") + "</div>" +
-      (passives ? "<div class=\"entity-passives\">" + passives + "</div>" : "") +
-      (e.isHuman ? "<button class=\"btn btn-grave\" data-eid=\"" + e.id + "\" style=\"margin-top:6px;padding:4px 8px;font-size:0.75rem;\">Cimitero (" + e.graveyard.length + ")</button>" : "");
-    left.appendChild(div);
-  });
-  // Bind graveyard buttons
-  left.querySelectorAll(".btn-grave").forEach(btn => {
-    btn.onclick = () => openGraveyard(btn.getAttribute("data-eid"));
-  });
+  if (left) {
+    left.innerHTML = "";
+    game.entities.forEach((e, idx) => {
+      const div = document.createElement("div");
+      div.className = "entity-panel" + (idx === game.turnIndex ? " active-turn" : "");
+      const nameClass = e.isFallen ? "fallen" : (e.isHuman ? "human" : "ai");
+      const icon = e.templeIcon || "";
+      const passives = (e.passives && e.passives.length)
+        ? e.passives.slice(-3).map(p => "<div class=\"passive-line\">" + p + "</div>").join("")
+        : "";
+      div.innerHTML =
+        "<div class=\"entity-name " + nameClass + "\">" + icon + " " + e.name + (e.isFallen?" (Caduto)":"") + "</div>" +
+        "<div class=\"entity-stats\"><span>💧 " + e.mana + "/" + e.manaMax + "</span><span>🃏 " + (e.isFallen?0:e.hand.length) + "</span><span>⚔️ " + e.field.length + "</span></div>" +
+        "<div class=\"entity-power\">" + (e.factionPower || "Potere fazione (placeholder)") + "</div>" +
+        (passives ? "<div class=\"entity-passives\">" + passives + "</div>" : "") +
+        (e.isHuman ? "<button class=\"btn btn-grave\" data-eid=\"" + e.id + "\" style=\"margin-top:6px;padding:4px 8px;font-size:0.75rem;\">Cimitero (" + e.graveyard.length + ")</button>" : "");
+      left.appendChild(div);
+    });
+    left.querySelectorAll(".btn-grave").forEach(btn => {
+      btn.onclick = () => openGraveyard(btn.getAttribute("data-eid"));
+    });
+  }
 
-  // Top bar
-  document.getElementById("turn-info").textContent = "Turno " + game.turnNumber + " — " + game.currentEntity.name;
-  document.getElementById("mana-info").innerHTML = "Mana: <strong>" + game.currentEntity.mana + "</strong> / " + game.currentEntity.manaMax;
+  const turnInfo = document.getElementById("turn-info");
+  if (turnInfo) turnInfo.textContent = "Turno " + game.turnNumber + " — " + game.currentEntity.name;
+  const manaInfo = document.getElementById("mana-info");
+  if (manaInfo) manaInfo.innerHTML = "Mana: <strong>" + game.currentEntity.mana + "</strong> / " + game.currentEntity.manaMax;
 
-  // Cancel button
   const btnCancel = document.getElementById("btn-cancel-action");
   if (btnCancel) {
     btnCancel.style.display = (game.playMode || game.moveMode) ? "inline-block" : "none";
   }
 
-  // Hand
   const handEl = document.getElementById("game-hand");
-  handEl.innerHTML = "";
-  const human = game.entities.find(e => e.isHuman);
-  if (human) {
-    human.hand.forEach(card => {
-      const el = document.createElement("div");
-      el.className = "hand-card";
-      if (game.selectedCard && game.selectedCard.instanceId === card.instanceId) {
-        el.style.borderColor = "var(--accent)";
-        el.style.boxShadow = "0 0 10px rgba(255,213,79,0.4)";
-      }
-      const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
-      el.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div><div class=\"meta\">" + card.type + " • Costo " + cost + "</div><div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect||"").substring(0,55) + "...</div>";
-      if (game.currentEntity.isHuman && game.phase === "playing") {
+  if (handEl) {
+    handEl.innerHTML = "";
+    const human = game.entities.find(e => e.isHuman);
+    if (human) {
+      human.hand.forEach(card => {
+        const el = document.createElement("div");
+        el.className = "hand-card";
+        if (game.selectedCard && game.selectedCard.instanceId === card.instanceId) {
+          el.style.borderColor = "var(--accent)";
+          el.style.boxShadow = "0 0 10px rgba(255,213,79,0.4)";
+        }
+        const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
+        el.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div><div class=\"meta\">" + card.type + " • Costo " + cost + "</div><div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect||"").substring(0,55) + "...</div>";
         el.addEventListener("click", () => {
           showCardDetail(card, { fromHand: true });
         });
-      }
-      handEl.appendChild(el);
-    });
+        handEl.appendChild(el);
+      });
+    }
   }
 
-  // Log
   const logEl = document.getElementById("game-log");
-  logEl.innerHTML = game.log.slice(-40).reverse().map(l =>
-    "<div class=\"log-entry" + (l.important?" important":"") + "\">" + l.msg + "</div>"
-  ).join("");
+  if (logEl) {
+    logEl.innerHTML = game.log.slice(-40).reverse().map(l =>
+      "<div class=\"log-entry" + (l.important?" important":"") + "\">" + l.msg + "</div>"
+    ).join("");
+  }
 
-  // End turn
   const btnEnd = document.getElementById("btn-end-turn");
   if (btnEnd) btnEnd.disabled = !game.currentEntity.isHuman || game.phase === "ended";
 
-  // Map
-  if (MapRenderer.game) {
+  if (typeof MapRenderer !== "undefined" && MapRenderer.game) {
     MapRenderer.setGame(game);
     MapRenderer.render();
   }
@@ -508,80 +526,11 @@ document.getElementById("btn-cancel-action")?.addEventListener("click", () => {
   game.selectedUnit = null;
   game.playMode = false;
   game.moveMode = false;
-  game.addLog("Azione annullata.");
+  game.attachMode = false;
+  game.targetMode = null;
   renderGameState();
+  if (typeof MapRenderer !== "undefined") MapRenderer.render();
 });
-
-
-// ---------- TRAP POPUP ----------
-window.onTrapPrompt = function(pending) {
-  const modal = document.getElementById("trap-modal");
-  const list = document.getElementById("trap-options");
-  const title = document.getElementById("trap-title");
-  if (!modal || !list) return;
-  title.textContent = "Trappola disponibile! (" + pending.trigger + ")";
-  list.innerHTML = "";
-  pending.options.forEach(t => {
-    const btn = document.createElement("button");
-    btn.className = "btn btn-primary";
-    btn.style.width = "100%";
-    btn.style.marginBottom = "8px";
-    btn.textContent = t.name + " (costo " + t.cost + ") – " + (t.effect || "").substring(0, 50);
-    btn.onclick = () => {
-      if (game) {
-        game.activatePendingTrap(t.instanceId);
-        modal.classList.add("hidden");
-        modal.style.display = "none";
-        if (window.onGameUpdate) window.onGameUpdate();
-      }
-    };
-    list.appendChild(btn);
-  });
-  const skip = document.createElement("button");
-  skip.className = "btn";
-  skip.style.width = "100%";
-  skip.textContent = "Ignora";
-  skip.onclick = () => {
-    if (game) game.declinePendingTrap();
-    modal.classList.add("hidden");
-    modal.style.display = "none";
-  };
-  list.appendChild(skip);
-  modal.classList.remove("hidden");
-  modal.style.display = "flex";
-};
-
-// ---------- MOSTRISSIMI PANEL ----------
-function renderMostrissimi() {
-  const el = document.getElementById("mostrissimi-panel");
-  if (!el || !game) return;
-  el.innerHTML = "<div style=\"font-weight:700;color:var(--accent);margin-bottom:8px;\">Mostrissimi (Pool)</div>";
-  game.mostrissimiPool.forEach((m, i) => {
-    const div = document.createElement("div");
-    div.className = "hand-card";
-    div.style.cursor = "pointer";
-    div.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + m.color + "\"></span>" + m.name + "</div>" +
-      "<div class=\"meta\">Sac " + m.sacrifice + " • " + m.atk + "/" + m.hp + "</div>" +
-      "<div class=\"meta\" style=\"font-size:0.7rem;\">" + (m.effect||"").substring(0,40) + "...</div>";
-    div.onclick = () => {
-      if (!game.currentEntity.isHuman) return;
-      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare o Tempio per evocarlo (servono " + m.sacrifice + " sacrifici).");
-      game.selectedCard = { ...m, instanceId: m.instanceId + "_sum_" + Date.now() };
-      game.playMode = true;
-      game.moveMode = false;
-      game.selectedUnit = null;
-      if (window.onGameUpdate) window.onGameUpdate();
-    };
-    el.appendChild(div);
-  });
-}
-
-
-
-
-
-window.onGameUpdate = renderGameState;
-
 
 // ---------- VIEWPORT / RESIZE ----------
 function fitToScreen() {
@@ -602,16 +551,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initAuth();
 });
 
-// ---------- END GAME ----------
 window.onGameEnd = function(g) {
   const modal = document.getElementById("endgame-modal");
   const title = document.getElementById("endgame-title");
   const msg = document.getElementById("endgame-msg");
   if (!modal) return;
-
   modal.classList.remove("hidden");
   modal.style.display = "flex";
-
   if (g.winner) {
     if (g.winner.isHuman) {
       title.textContent = "🏆 Vittoria!";

@@ -41,10 +41,10 @@ const PLAINS = [
 ];
 
 const TEMPLES = {
-  "-6,4":  { id: "A", label: "Tempio A", name: "Lago NW" },
-  "-2,-4": { id: "B", label: "Tempio B", name: "Lago SW" },
-  "2,4":   { id: "D", label: "Tempio D", name: "Lago NE" },
-  "6,-4":  { id: "C", label: "Tempio C", name: "Lago SE" }
+  "-6,4":  { id: "cielo",  label: "☁", name: "Tempio del Cielo",  icon: "☁", color: "#81D4FA" },
+  "-2,-4": { id: "luna",   label: "☾", name: "Tempio della Luna", icon: "☾", color: "#CE93D8" },
+  "2,4":   { id: "guerra", label: "⚔", name: "Tempio della Guerra", icon: "⚔", color: "#EF9A9A" },
+  "6,-4":  { id: "acqua",  label: "🌊", name: "Tempio dell'Acqua", icon: "🌊", color: "#80CBC4" }
 };
 
 const CITY = [0, 0];
@@ -53,8 +53,26 @@ const CITY = [0, 0];
 const CELL_TYPE = new Map();
 MOUNTAINS.forEach(([q,r]) => CELL_TYPE.set(`${q},${r}`, "mountain"));
 PLAINS.forEach(([q,r]) => CELL_TYPE.set(`${q},${r}`, "plain"));
-Object.keys(TEMPLES).forEach(k => CELL_TYPE.set(k, "water"));
+Object.keys(TEMPLES).forEach(k => CELL_TYPE.set(k, "temple"));
 CELL_TYPE.set("0,0", "city");
+
+// Zone speciali (1 esagono ciascuna) – coordinate scelte tra le pianure
+const SPECIAL_ZONES = {
+  "0,3":  { type: "cimitero",  name: "Cimitero Antico",   icon: "⚰" },
+  "-3,2": { type: "rovine",    name: "Rovine Dimenticate", icon: "🏛" },
+  "3,-2": { type: "statua",    name: "Statua del Colosso", icon: "🗿" },
+  "-1,4": { type: "colosseo",  name: "Colosseo di Penumbra", icon: "🏟️" },
+  "4,0":  { type: "circolo",   name: "Circolo Rituale",   icon: "✦" },
+  "1,-4": { type: "santuario", name: "Santuario Ombroso", icon: "🕯" },
+  "-4,3": { type: "jungla",    name: "Jungla Selvaggia",  icon: "🌿" },
+  "2,2":  { type: "villaggio", name: "Villaggio Fantasma", icon: "🏠" }
+};
+
+// Applica zone speciali sulla mappa (sovrascrivono plain se presenti)
+Object.entries(SPECIAL_ZONES).forEach(([key, z]) => {
+  if (CELL_TYPE.has(key)) CELL_TYPE.set(key, z.type);
+});
+
 
 // =====================================================
 // CARD CATALOG – effetti strutturati (effectId)
@@ -243,16 +261,55 @@ const COLOR_NAMES = {
 // Tipi di terreno per eventi
 const TERRAIN_EVENTS = {
   plain: [
-    { id: "e_plain_1", name: "Benedizione della Pianura", color: "green", effect: "La creatura ottiene +1 ATK permanente." },
-    { id: "e_plain_2", name: "Erbe Curative", color: "white", effect: "La creatura recupera 2 PV." },
-    { id: "e_plain_3", name: "Trappola Naturale", color: "black", effect: "La creatura subisce 1 danno." }
+    { id: "e_plain_1", name: "Venti della Pianura", passive: "+1 ATK permanente", apply: "atk1" },
+    { id: "e_plain_2", name: "Erbe Curative", passive: "+2 PV", apply: "hp2" },
+    { id: "e_plain_3", name: "Trappola d'Erba", passive: "-1 PV", apply: "dmg1" }
   ],
-  water: [
-    { id: "e_water_1", name: "Acque Sacre", color: "blue", effect: "La creatura ottiene 1 scudo." },
-    { id: "e_water_2", name: "Corrente Vigorosa", color: "green", effect: "La creatura ottiene +1 ATK e +1 PV." }
+  temple: [
+    { id: "e_temple_1", name: "Favore del Tempio", passive: "+1 scudo", apply: "shield1" },
+    { id: "e_temple_2", name: "Eco Sacra", passive: "+1 ATK +1 PV", apply: "atk1hp1" }
   ],
   city: [
-    { id: "e_city_1", name: "Potere dell'Altare", color: "yellow", effect: "La creatura ottiene +2 ATK permanente." },
-    { id: "e_city_2", name: "Rivelazione", color: "blue", effect: "Rivela tutte le celle adiacenti." }
-  ]
+    { id: "e_city_1", name: "Potere dell'Altare", passive: "+2 ATK permanente", apply: "atk2" },
+    { id: "e_city_2", name: "Cuore di Penumbra", passive: "+3 PV", apply: "hp3" }
+  ],
+  cimitero: [
+    { id: "e_cim_1", name: "Sussurri dei Morti", passive: "+1 ATK permanente", apply: "atk1" },
+    { id: "e_cim_2", name: "Tocco Freddo", passive: "-2 PV", apply: "dmg2" }
+  ],
+  rovine: [
+    { id: "e_rov_1", name: "Reliquia Antica", passive: "+1 scudo", apply: "shield1" },
+    { id: "e_rov_2", name: "Crollo", passive: "-1 PV", apply: "dmg1" }
+  ],
+  statua: [
+    { id: "e_sta_1", name: "Sguardo del Colosso", passive: "+2 ATK permanente", apply: "atk2" },
+    { id: "e_sta_2", name: "Pietrificazione Parziale", passive: "-1 ATK", apply: "atk-1" }
+  ],
+  colosseo: [
+    { id: "e_col_1", name: "Furia dell'Arena", passive: "+2 ATK permanente", apply: "atk2" },
+    { id: "e_col_2", name: "Sangue e Gloria", passive: "+2 PV +1 ATK", apply: "atk1hp2" }
+  ],
+  circolo: [
+    { id: "e_cir_1", name: "Energia Rituale", passive: "+1 scudo +1 ATK", apply: "shield1atk1" },
+    { id: "e_cir_2", name: "Portale Instabile", passive: "-1 PV", apply: "dmg1" }
+  ],
+  santuario: [
+    { id: "e_san_1", name: "Benedizione Ombrosa", passive: "+2 PV +1 scudo", apply: "hp2shield1" },
+    { id: "e_san_2", name: "Silenzio Sacro", passive: "+1 scudo", apply: "shield1" }
+  ],
+  jungla: [
+    { id: "e_jun_1", name: "Liane Vigorose", passive: "+1 ATK permanente", apply: "atk1" },
+    { id: "e_jun_2", name: "Veleno Selvaggio", passive: "-2 PV", apply: "dmg2" }
+  ],
+  villaggio: [
+    { id: "e_vil_1", name: "Aiuto dei Fantasmi", passive: "+2 PV", apply: "hp2" },
+    { id: "e_vil_2", name: "Maledizione Abbandonata", passive: "-1 ATK", apply: "atk-1" }
+  ],
+  mountain: []
+};
+
+const ZONE_COLORS = {
+  plain: "#7CB342", mountain: "#5D4037", temple: "#5C6BC0", city: "#FFD54F",
+  cimitero: "#78909C", rovine: "#A1887F", statua: "#90A4AE", colosseo: "#FF8A65",
+  circolo: "#B39DDB", santuario: "#FFE082", jungla: "#558B2F", villaggio: "#BCAAA4"
 };

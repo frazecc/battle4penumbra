@@ -20,8 +20,11 @@ class Entity {
     this.templeKey = null;
     this.explored = new Set();
     this.tokens = [];
+    this.passives = []; // stringhe passive da eventi
     this.quest = null;
     this.clearFogUntil = 0;
+    this.templeId = null; // cielo/luna/guerra/acqua
+    this.factionPower = "Potere fazione (placeholder)"; // TODO futuro
   }
 
   startTurn() {
@@ -104,8 +107,14 @@ class GameState {
     }
     this.entities.forEach((e, idx) => {
       e.templeKey = templeKeys[idx];
+      const t = TEMPLES[templeKeys[idx]];
+      e.templeId = t ? t.id : null;
+      e.templeIcon = t ? t.icon : "?";
+      e.templeName = t ? t.name : "Tempio";
       this._revealAround(e, ...templeKeys[idx].split(",").map(Number), 2);
     });
+    // Ordine orario geometrico dei templi per turn order
+    this._buildClockwiseOrder();
   }
 
   _initMostrissimiPool() {
@@ -126,6 +135,33 @@ class GameState {
       const pick = candidates[Math.floor(Math.random() * candidates.length)];
       this.mostrissimiPool[index] = { ...pick, instanceId: pick.id + "_pool_" + Date.now() };
     }
+  }
+
+  _buildClockwiseOrder() {
+    const withAngle = this.entities.map(e => {
+      const [q, r] = (e.templeKey || "0,0").split(",").map(Number);
+      const x = Math.sqrt(3) * q + Math.sqrt(3) / 2 * r;
+      const y = 1.5 * r;
+      const angle = Math.atan2(y, x);
+      return { e, angle };
+    });
+    withAngle.sort((a, b) => a.angle - b.angle);
+    this.clockwiseIds = withAngle.map(x => x.e.id);
+  }
+
+  _nextClockwiseIndex(fromIndex, reverse = false) {
+    const order = this.clockwiseIds || this.entities.map(e => e.id);
+    const curId = this.entities[fromIndex].id;
+    let pos = order.indexOf(curId);
+    if (pos < 0) pos = 0;
+    for (let i = 0; i < order.length; i++) {
+      pos = reverse ? (pos - 1 + order.length) % order.length : (pos + 1) % order.length;
+      const ent = this.entities.find(e => e.id === order[pos]);
+      if (!ent) continue;
+      if (!ent.isFallen) return this.entities.indexOf(ent);
+      if (ent.isFallen && ent.field.length > 0) return this.entities.indexOf(ent);
+    }
+    return fromIndex;
   }
 
   get currentEntity() { return this.entities[this.turnIndex]; }
@@ -171,19 +207,25 @@ class GameState {
 
   startDraft() {
     this.phase = "draft";
-    // Draft a bustine: ogni giocatore attivo sceglie 3 bustine in totale (9 carte)
-    // Si vedono sempre 3 bustine; ne scegli 1 intera; poi si passa/refill
+    // 7 Wonders style: 3 giri di bustine
+    // Giro 1: senso orario | Giro 2: antiorario | Giro 3: orario
+    const actives = this.activePlayers;
     this.draft = {
       packs: this._generatePacks(3),
       currentPick: 0,
-      totalPicksNeeded: this.activePlayers.length * 3, // ogni attivo prende 3 bustine
+      totalPicksNeeded: actives.length * 3,
       picks: {},
-      pickerIndex: 0  // indice tra activePlayers
+      round: 1, // 1,2,3
+      picksInRound: 0,
+      reverse: false,
+      firstId: null
     };
-    this.activePlayers.forEach(e => this.draft.picks[e.id] = []);
-    // Primo picker casuale tra attivi
-    this.draft.pickerIndex = Math.floor(Math.random() * this.activePlayers.length);
-    this.addLog("Inizia la fase di Draft a bustine!", true);
+    actives.forEach(e => this.draft.picks[e.id] = []);
+    // Primo giocatore casuale
+    const first = actives[Math.floor(Math.random() * actives.length)];
+    this.draft.firstId = first.id;
+    this.turnIndex = this.entities.indexOf(first);
+    this.addLog("Draft stile 7 Wonders! Primo: " + first.name + " — Giro 1 (orario)", true);
   }
 
   _generatePacks(count) {
@@ -206,9 +248,9 @@ class GameState {
 
   getDraftCurrentPicker() {
     if (!this.draft || this.draft.currentPick >= this.draft.totalPicksNeeded) return null;
-    const actives = this.activePlayers;
-    if (!actives.length) return null;
-    return actives[this.draft.pickerIndex % actives.length];
+    const e = this.entities[this.turnIndex];
+    if (!e || e.isFallen) return this.activePlayers[0] || null;
+    return e;
   }
 
   // Scegli intera bustina (packIndex)
@@ -225,16 +267,30 @@ class GameState {
     // Rimuovi la bustina scelta
     this.draft.packs.splice(packIndex, 1);
     this.draft.currentPick++;
-    // Passa al prossimo giocatore
-    this.draft.pickerIndex = (this.draft.pickerIndex + 1) % this.activePlayers.length;
-    // Refill fino a 3 bustine se non abbiamo finito
+    this.draft.picksInRound++;
+    const nActive = this.activePlayers.length;
+    // Fine del giro?
+    if (this.draft.picksInRound >= nActive) {
+      this.draft.picksInRound = 0;
+      this.draft.round++;
+      if (this.draft.round === 2) {
+        this.draft.reverse = true;
+        this.addLog("Giro 2 del draft (antiorario)", true);
+      } else if (this.draft.round === 3) {
+        this.draft.reverse = false;
+        this.addLog("Giro 3 del draft (orario)", true);
+      }
+      // Torna al first player per il nuovo giro
+      const first = this.entities.find(e => e.id === this.draft.firstId);
+      if (first) this.turnIndex = this.entities.indexOf(first);
+    } else {
+      this.turnIndex = this._nextClockwiseIndex(this.turnIndex, this.draft.reverse);
+    }
     if (this.draft.currentPick < this.draft.totalPicksNeeded) {
       while (this.draft.packs.length < 3) {
-        const newPacks = this._generatePacks(1);
-        this.draft.packs.push(newPacks[0]);
+        this.draft.packs.push(this._generatePacks(1)[0]);
       }
     }
-    // AI auto-pick
     this._processAIDraftPacks();
     if (this.draft.currentPick >= this.draft.totalPicksNeeded) this._finishDraft();
     return true;
@@ -249,24 +305,34 @@ class GameState {
     while (this.draft.currentPick < this.draft.totalPicksNeeded) {
       const picker = this.getDraftCurrentPicker();
       if (!picker || picker.isHuman) break;
-      // AI sceglie la bustina con score medio più alto
       let bestIdx = 0, bestScore = -1;
       this.draft.packs.forEach((pack, pi) => {
         const score = pack.cards.reduce((s, c) => s + (c.cost || 0) * 10 + (c.atk || 0) + (c.hp || 0), 0) + Math.random();
         if (score > bestScore) { bestScore = score; bestIdx = pi; }
       });
+      // riusa draftPickPack senza ricorsione AI infinita
       const pack = this.draft.packs[bestIdx];
       pack.cards.forEach(card => this.draft.picks[picker.id].push(card));
       this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color));
       this.draft.packs.splice(bestIdx, 1);
       this.draft.currentPick++;
-      this.draft.pickerIndex = (this.draft.pickerIndex + 1) % this.activePlayers.length;
+      this.draft.picksInRound++;
+      const nActive = this.activePlayers.length;
+      if (this.draft.picksInRound >= nActive) {
+        this.draft.picksInRound = 0;
+        this.draft.round++;
+        if (this.draft.round === 2) { this.draft.reverse = true; this.addLog("Giro 2 del draft (antiorario)", true); }
+        else if (this.draft.round === 3) { this.draft.reverse = false; this.addLog("Giro 3 del draft (orario)", true); }
+        const first = this.entities.find(e => e.id === this.draft.firstId);
+        if (first) this.turnIndex = this.entities.indexOf(first);
+      } else {
+        this.turnIndex = this._nextClockwiseIndex(this.turnIndex, this.draft.reverse);
+      }
       if (this.draft.currentPick < this.draft.totalPicksNeeded) {
-        while (this.draft.packs.length < 3) {
-          this.draft.packs.push(this._generatePacks(1)[0]);
-        }
+        while (this.draft.packs.length < 3) this.draft.packs.push(this._generatePacks(1)[0]);
       }
     }
+    if (this.draft.currentPick >= this.draft.totalPicksNeeded) this._finishDraft();
   }
 
   _finishDraft() {
@@ -350,8 +416,8 @@ class GameState {
       // MOSTRISSIMO: Altare o Tempio
       if (card.type === "mostrissimo") {
         const cellType = CELL_TYPE.get(q + "," + r);
-        if (cellType !== "city" && cellType !== "water") {
-          this.addLog("I Mostrissimi si evocano solo sull'Altare o su un Tempio!");
+        if (cellType !== "city" && cellType !== "temple" && cellType !== "circolo") {
+          this.addLog("I Mostrissimi si evocano solo su Altare, Tempio o Circolo Rituale!");
           return false;
         }
         const sac = card.sacrifice || 0;
@@ -892,35 +958,31 @@ class GameState {
         this.addLog(u.name + " (Pianura) ottiene +1 ATK permanente");
       }
     });
-    current.field.forEach(u => {
+    // Evento a fine turno: scegli random una cella con creatura, evento random della zona
+    if (current.field.length > 0) {
+      const u = current.field[Math.floor(Math.random() * current.field.length)];
       const key = u.q + "," + u.r;
-      if (!this.flippedCells.has(key)) {
-        this.flippedCells.add(key);
-        const type = CELL_TYPE.get(key);
-        const events = TERRAIN_EVENTS[type];
-        if (events && events.length) {
-          const ev = events[Math.floor(Math.random() * events.length)];
-          this.addLog("📜 Evento su (" + u.q + "," + u.r + "): " + ev.name + " – " + ev.effect, true);
-          this._applyTerrainEvent(ev, u, current);
-        }
+      const type = CELL_TYPE.get(key) || "plain";
+      const events = (typeof TERRAIN_EVENTS !== "undefined" && TERRAIN_EVENTS[type]) ? TERRAIN_EVENTS[type] : [];
+      if (events.length) {
+        const ev = events[Math.floor(Math.random() * events.length)];
+        this.addLog("📜 Evento (" + type + ") su (" + u.q + "," + u.r + "): " + ev.name + " – " + (ev.passive || ""), true);
+        this._applyTerrainEvent(ev, u, current);
+      } else {
+        this.addLog("Nessun evento per zona " + type);
       }
-    });
+    }
     if (!current.isFallen) {
       if (!current.hasArtifactOnField()) {
         current.isFallen = true;
+        current.hand = []; // caduto: niente carte
         this.loseReason = current.name + " ha perso: Artefatto non presente sul campo a fine turno";
         this.addLog("💀 " + current.name + " decade! (Artefatto assente sul campo)", true);
       }
     }
     this._checkWin();
     if (this.phase === "ended") return;
-    let next = (this.turnIndex + 1) % this.entities.length;
-    let safety = 0;
-    while (this.entities[next].isFallen && safety < 8) {
-      next = (next + 1) % this.entities.length;
-      safety++;
-    }
-    this.turnIndex = next;
+    this.turnIndex = this._nextClockwiseIndex(this.turnIndex, false);
     this.turnNumber++;
     const nextE = this.currentEntity;
     nextE.startTurn();
@@ -936,18 +998,27 @@ class GameState {
   }
 
   _applyTerrainEvent(ev, unit, owner) {
-    if (ev.effect.includes("+1 ATK")) unit.permanentAtkBonus = (unit.permanentAtkBonus || 0) + 1;
-    else if (ev.effect.includes("+2 ATK")) unit.permanentAtkBonus = (unit.permanentAtkBonus || 0) + 2;
-    else if (ev.effect.includes("recupera 2 PV") || ev.effect.includes("+1 PV")) unit.currentHp = (unit.currentHp || 0) + 2;
-    else if (ev.effect.includes("1 scudo")) unit.shields = (unit.shields || 0) + 1;
-    else if (ev.effect.includes("1 danno")) this._applyDamage(unit, 1);
-    else if (ev.effect.includes("Rivela")) this._revealAround(owner, unit.q, unit.r, 2);
+    const a = ev.apply || "";
+    if (a.includes("atk2")) unit.permanentAtkBonus = (unit.permanentAtkBonus || 0) + 2;
+    else if (a.includes("atk1")) unit.permanentAtkBonus = (unit.permanentAtkBonus || 0) + 1;
+    else if (a.includes("atk-1")) unit.permanentAtkBonus = (unit.permanentAtkBonus || 0) - 1;
+    if (a.includes("hp3")) unit.currentHp = (unit.currentHp || 0) + 3;
+    else if (a.includes("hp2")) unit.currentHp = (unit.currentHp || 0) + 2;
+    if (a.includes("shield1")) unit.shields = (unit.shields || 0) + 1;
+    if (a.includes("dmg2")) this._applyDamage(unit, 2);
+    else if (a.includes("dmg1")) this._applyDamage(unit, 1);
+    // Passiva vicino al nome
+    if (ev.passive && owner) {
+      owner.passives.push(ev.name + ": " + ev.passive);
+      if (owner.passives.length > 8) owner.passives.shift();
+    }
   }
 
   _checkWin() {
     const living = this.entities.filter(e => !e.isFallen);
     if (living.length <= 1) {
       this.winner = living[0] || null;
+      if (this.winner && this.winner.isFallen) this.winner = null;
       this.phase = "ended";
       if (this.winner) this.addLog("🏆 " + this.winner.name + " vince la partita!", true);
       else this.addLog("Partita terminata - nessun vincitore.", true);
@@ -955,9 +1026,86 @@ class GameState {
     }
   }
 
+
+  getUnitByInstanceId(id) {
+    for (const ent of this.entities) {
+      const u = ent.field.find(x => x.instanceId === id);
+      if (u) return u;
+    }
+    return null;
+  }
+
+  _runFallenTurn(ai) {
+    this.addLog(ai.name + " (caduto) agisce...");
+    for (const unit of [...ai.field]) {
+      let target = null;
+      if (unit.chaseTargetId) {
+        target = this.getUnitByInstanceId(unit.chaseTargetId);
+        if (!target) unit.chaseTargetId = null;
+      }
+      if (!target) {
+        for (const ent of this.entities) {
+          if (ent.id === ai.id) continue;
+          for (const u of ent.field) {
+            if (hexDistance(unit.q, unit.r, u.q, u.r) <= 2) {
+              target = u;
+              unit.chaseTargetId = u.instanceId;
+              break;
+            }
+          }
+          if (target) break;
+        }
+      }
+      if (target) {
+        const nbs = this._hexesInRange(unit.q, unit.r, 1);
+        let best = null, bestD = 999;
+        for (const [q, r] of nbs) {
+          if (CELL_TYPE.get(q + "," + r) === "mountain") continue;
+          const occ = this.getUnitAt(q, r);
+          if (occ && occ.instanceId !== target.instanceId) continue;
+          const d = hexDistance(q, r, target.q, target.r);
+          if (d < bestD) { bestD = d; best = [q, r]; }
+        }
+        if (best) {
+          const occ = this.getUnitAt(best[0], best[1]);
+          if (occ && occ.ownerId !== ai.id) {
+            this._resolveCombat(unit, occ, unit.q, unit.r);
+          } else if (!occ) {
+            unit.q = best[0];
+            unit.r = best[1];
+            this.addLog(unit.name + " (caduto) insegue verso (" + best[0] + "," + best[1] + ")");
+          }
+        }
+      } else {
+        const nbs = this._hexesInRange(unit.q, unit.r, 1).filter(([q, r]) => {
+          return CELL_TYPE.get(q + "," + r) !== "mountain" && !this.getUnitAt(q, r);
+        });
+        if (nbs.length) {
+          const [q, r] = nbs[Math.floor(Math.random() * nbs.length)];
+          unit.q = q;
+          unit.r = r;
+          this.addLog(unit.name + " (caduto) vaga su (" + q + "," + r + ")");
+        }
+      }
+    }
+  }
+
   runAITurn() {
     const ai = this.currentEntity;
-    if (ai.isHuman || ai.isFallen || this.phase !== "playing") return;
+    if (ai.isHuman || this.phase !== "playing") return;
+    // CADUTO: solo movimento creature (chase o random)
+    if (ai.isFallen) {
+      this._runFallenTurn(ai);
+      setTimeout(() => {
+        this.endTurn();
+        if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
+        if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
+        else if (!this.currentEntity.isHuman && this.phase === "playing") {
+          setTimeout(() => this.runAITurn(), 500);
+        }
+      }, 600);
+      return;
+    }
     this.addLog(ai.name + " sta pensando...");
     if (!ai.hasArtifactOnField()) {
       const artCard = ai.hand.find(c => c.id === "artifact" || c.type === "artefatto");

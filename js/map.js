@@ -140,10 +140,26 @@ const MapRenderer = {
       fill = "#5D4037"; stroke = "#3E2723";
     } else if (type === "plain") {
       fill = "#7CB342"; stroke = "#558B2F";
-    } else if (type === "water") {
-      fill = "#29B6F6"; stroke = "#0277BD";
+    } else if (type === "temple") {
+      fill = "#5C6BC0"; stroke = "#3949AB";
     } else if (type === "city") {
       fill = "#FFD54F"; stroke = "#FF8F00";
+    } else if (type === "cimitero") {
+      fill = "#78909C"; stroke = "#546E7A";
+    } else if (type === "rovine") {
+      fill = "#A1887F"; stroke = "#6D4C41";
+    } else if (type === "statua") {
+      fill = "#90A4AE"; stroke = "#607D8B";
+    } else if (type === "colosseo") {
+      fill = "#FF8A65"; stroke = "#E64A19";
+    } else if (type === "circolo") {
+      fill = "#B39DDB"; stroke = "#7E57C2";
+    } else if (type === "santuario") {
+      fill = "#FFE082"; stroke = "#FFB300";
+    } else if (type === "jungla") {
+      fill = "#558B2F"; stroke = "#33691E";
+    } else if (type === "villaggio") {
+      fill = "#BCAAA4"; stroke = "#8D6E63";
     } else {
       fill = "#37474F"; stroke = "#263238";
     }
@@ -159,7 +175,6 @@ const MapRenderer = {
     ctx.lineWidth = Math.max(0.7, 1 * this.scale);
     ctx.stroke();
 
-    // Labels for temples / city when visible
     if (visible) {
       if (type === "city") {
         ctx.fillStyle = "#D32F2F";
@@ -167,15 +182,22 @@ const MapRenderer = {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("★", cx, cy);
-      } else if (type === "water") {
+      } else if (type === "temple") {
         const t = TEMPLES[`${q},${r}`];
         if (t) {
-          ctx.fillStyle = "#0D1B2A";
-          ctx.font = `bold ${Math.max(8, 10 * this.scale)}px Arial`;
+          ctx.fillStyle = "#FFF";
+          ctx.font = `bold ${Math.max(14, 18 * this.scale)}px Arial`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillText(t.label, cx, cy);
+          ctx.fillText(t.icon || t.label, cx, cy);
         }
+      } else if (typeof SPECIAL_ZONES !== "undefined" && SPECIAL_ZONES[`${q},${r}`]) {
+        const z = SPECIAL_ZONES[`${q},${r}`];
+        ctx.fillStyle = "#FFF";
+        ctx.font = `${Math.max(11, 14 * this.scale)}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(z.icon || "", cx, cy);
       }
     }
   },
@@ -218,13 +240,20 @@ const MapRenderer = {
       ctx.fillText(String(unit.shields), cx + radius * 0.7, cy - radius * 0.7);
     }
 
-    // Stats (include permanent ATK bonus)
+    // Icona tempio proprietario in alto
+    if (owner.templeIcon) {
+      ctx.font = `${Math.max(10, 12 * this.scale)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(owner.templeIcon, cx, cy - radius * 0.55);
+    }
+    // ATK / PV in basso ben visibili
     const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
     ctx.fillStyle = "#0D1B2A";
-    ctx.font = `bold ${Math.max(9, 11 * this.scale)}px Arial`;
+    ctx.font = `bold ${Math.max(10, 12 * this.scale)}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy);
+    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy + radius * 0.25);
   },
 
   _highlightHex(q, r, color) {

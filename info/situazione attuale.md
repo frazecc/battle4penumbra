@@ -1,40 +1,50 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
-Consegna 002 – 4 Nov 2026
+Consegna 003 – 4 Nov 2026
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA:
 questo file deve essere aggiornato ogni singola volta che un file viene modificato
 
 --------------------------------------------------------------------------------
-FIX IN QUESTA CONSEGNA
+FIX / FEATURES IN QUESTA CONSEGNA
 --------------------------------------------------------------------------------
-1. MAPPA PIÙ GRANDE: auto-fit allo schermo (PC e mobile), size/scale aumentati,
-   canvas a tutta altezza disponibile, re-center su resize.
-2. DRAFT: non si vedono le carte di nessuno (né proprie né avversari).
-   Solo colore delle 3 bustine.
-3. FOG OF WAR DINAMICA: la nebbia copre tutto TRANNE:
-   - raggio 2 attorno a ogni tua creatura (mostro/mostrissimo/token)
-   - raggio 2 attorno al tuo tempio (sempre)
-   Non resta "esplorato" permanente: se le creature si spostano, la visione le segue.
-4. EVOCAZIONE MOSTRI: solo sul proprio Tempio (non altrove).
-   Mostrissimi: ancora Altare o Tempio + sacrifici.
+1. TURN ORDER: primo giocatore casuale, poi senso orario sui templi (geometria).
+2. DRAFT stile 7 Wonders: Giro1 orario, Giro2 antiorario, Giro3 orario.
+   Una bustina a testa per giro (3 bustine = 9 carte).
+3. TEMPLI non sono acqua: Cielo ☁, Luna ☾, Guerra ⚔, Acqua 🌊.
+   Stessa icona sulle creature per il proprietario.
+4. ZONE SPECIALI (1 ciascuna): Cimitero, Rovine, Statua, Colosseo, Circolo Rituale,
+   Santuario, Jungla, Villaggio. Scoperte con la fog / eventi.
+5. EVENTI a fine turno: cella random con tua creatura → evento random della zona
+   → passiva scritta vicino al nome (ogni volta).
+6. CADUTI: mano vuota, non vincono, a inizio turno token sul tempio se libero,
+   creature inseguono bersaglio avvistato oppure vagano a caso.
+7. OVERLAY: icona tempio + ATK/PV chiari (niente buff separati).
+8. CIMITERO privato: bottone nel pannello, carte cliccabili → dettaglio full.
+9. Placeholder "Potere fazione (placeholder)" sotto ogni nome.
+10. Mostrissimi: Altare / Tempio / Circolo Rituale.
+
+--------------------------------------------------------------------------------
+DA FARE IN FUTURO (ricordamelo quando chiedi "cosa facciamo ora?")
+--------------------------------------------------------------------------------
+- Sistema Quest (3 indizi + vittoria alternativa)
+- Condizione vittoria Quest
+- Trappole edge-case complete
+- Effetti carte multi-target / scelte complesse rimanenti
+- Multiplayer 1v1 / 1v1v1 / 1v1v1v1, Classifica, Codex
+- Catalogo Mostrissimi ampliato (~100)
+- Potere fazione reale da colori del mazzo (togliere placeholder)
+- Animazioni
 
 --------------------------------------------------------------------------------
 FILE DA CARICARE
 --------------------------------------------------------------------------------
-- js/app.js
+- index.html
+- css/style.css
+- js/data.js
 - js/game.js
 - js/map.js
-- css/style.css
-
---------------------------------------------------------------------------------
-STATO SISTEMI
---------------------------------------------------------------------------------
-Setup 4 entità, draft bustine (solo colore), token 1/1 tempio, artefatto legato,
-effetti/trappole/mostrissimi/eventi, rimbalzo, fog dinamica, summon solo tempio.
-Responsive PC/mobile migliorato.
-
-Ancora da fare: Quest, multiplayer, Codex, animazioni.
+- js/app.js
 
 ================================================================================

@@ -281,8 +281,21 @@ function renderGameState() {
     const div = document.createElement("div");
     div.className = "entity-panel" + (idx === game.turnIndex ? " active-turn" : "");
     const nameClass = e.isFallen ? "fallen" : (e.isHuman ? "human" : "ai");
-    div.innerHTML = "<div class=\"entity-name " + nameClass + "\">" + e.name + (e.isFallen?" (Caduto)":"") + "</div><div class=\"entity-stats\"><span>💧 " + e.mana + "/" + e.manaMax + "</span><span>🃏 " + e.hand.length + "</span><span>⚔️ " + e.field.length + "</span></div>";
+    const icon = e.templeIcon || "";
+    const passives = (e.passives && e.passives.length)
+      ? e.passives.slice(-3).map(p => "<div class=\"passive-line\">" + p + "</div>").join("")
+      : "";
+    div.innerHTML =
+      "<div class=\"entity-name " + nameClass + "\">" + icon + " " + e.name + (e.isFallen?" (Caduto)":"") + "</div>" +
+      "<div class=\"entity-stats\"><span>💧 " + e.mana + "/" + e.manaMax + "</span><span>🃏 " + (e.isFallen?0:e.hand.length) + "</span><span>⚔️ " + e.field.length + "</span></div>" +
+      "<div class=\"entity-power\">" + (e.factionPower || "Potere fazione (placeholder)") + "</div>" +
+      (passives ? "<div class=\"entity-passives\">" + passives + "</div>" : "") +
+      (e.isHuman ? "<button class=\"btn btn-grave\" data-eid=\"" + e.id + "\" style=\"margin-top:6px;padding:4px 8px;font-size:0.75rem;\">Cimitero (" + e.graveyard.length + ")</button>" : "");
     left.appendChild(div);
+  });
+  // Bind graveyard buttons
+  left.querySelectorAll(".btn-grave").forEach(btn => {
+    btn.onclick = () => openGraveyard(btn.getAttribute("data-eid"));
   });
 
   // Top bar

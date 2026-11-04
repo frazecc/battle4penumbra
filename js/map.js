@@ -389,9 +389,11 @@ const MapRenderer = {
         // Move / Attack mode – priorità assoluta, non deve mai aprire l'anteprima
         if (this.game.moveMode && this.game.selectedUnit) {
           this.game.tryMoveOrAttack(q, r);
+          // Chiudi eventuali anteprime aperte
+          if (typeof closeCardDetail === "function") closeCardDetail();
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
-          return; // sempre return, anche se il movimento fallisce
+          return; // SEMPRE return: non aprire mai l'anteprima mentre si è in modalità Muovi
         }
 
         // Target mode (maledizioni)
@@ -433,15 +435,18 @@ const MapRenderer = {
         }
       }
 
-      // In fase ended (dopo "Guarda la mappa") o playing: permetti di vedere dettagli di qualsiasi creatura visibile
-      {
+      // Dettagli creature: solo se NON siamo in una modalità di azione (move/play/attach/target)
+      // e solo se la partita è playing o ended
+      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode;
+      if (!inActionMode) {
         const anyUnit = this.game.getUnitAt(q, r);
         if (anyUnit) {
           const human = this.game.entities.find(e => e.isHuman);
           const isOwn = human && anyUnit.ownerId === human.id;
           const visible = isOwn || (human ? this.game.isVisibleTo(human, anyUnit.q, anyUnit.r) : true);
           if (visible && typeof showCardDetail === "function") {
-            showCardDetail(anyUnit, { fromField: true, readOnly: true });
+            const readOnly = this.game.phase === "ended" || !isOwn;
+            showCardDetail(anyUnit, { fromField: true, readOnly: readOnly });
           }
         }
       }

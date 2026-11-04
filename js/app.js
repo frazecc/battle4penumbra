@@ -129,6 +129,18 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
   });
   humanDraftPicksDone = 0;
   game.startDraft();
+
+  // Pulisci subito le buste per evitare il flash
+  const container = document.getElementById("packs-container");
+  if (container) {
+    container.innerHTML = "";
+    container.style.visibility = "hidden";
+  }
+  const statusEl = document.getElementById("draft-status");
+  const turnEl = document.getElementById("draft-turn-info");
+  if (statusEl) statusEl.textContent = "";
+  if (turnEl) turnEl.textContent = "";
+
   showScreen("draft");
 
   // Messaggio iniziale subito all'avvio del draft
@@ -593,11 +605,16 @@ function renderGameState() {
     handEl.innerHTML = "";
     const human = game.entities.find(e => e.isHuman);
     if (human) {
-      // Ordina sempre per costo crescente (sinistra = più economiche)
+      // Ordine: costo crescente → tipo (artefatto, mostro, mostrissimo, maledizione, trappola, altro) → alfabetico
+      const typeOrder = { "artefatto": 0, "mostro": 1, "mostrissimo": 2, "maledizione": 3, "trappola": 4 };
       const sortedHand = [...human.hand].sort((a, b) => {
         const ca = a.currentCost !== undefined ? a.currentCost : (a.cost || 0);
         const cb = b.currentCost !== undefined ? b.currentCost : (b.cost || 0);
-        return ca - cb;
+        if (ca !== cb) return ca - cb;
+        const ta = typeOrder[(a.type || "").toLowerCase()] ?? 99;
+        const tb = typeOrder[(b.type || "").toLowerCase()] ?? 99;
+        if (ta !== tb) return ta - tb;
+        return (a.name || "").localeCompare(b.name || "", "it");
       });
 
       sortedHand.forEach(card => {

@@ -474,13 +474,13 @@ body {
 .game-hand {
   background: #0A1420;
   border-top: 1px solid var(--border);
-  padding: 18px 10px 22px;
+  padding: 20px 12px 28px;
   display: flex;
-  gap: 14px;
+  gap: 16px;
   overflow-x: auto;
   overflow-y: visible;
-  min-height: 200px;
-  align-items: flex-end; /* le carte più grandi crescono verso l'alto */
+  min-height: 240px;
+  align-items: flex-end;
 }
 .hand-card {
   background: var(--bg2);
@@ -516,51 +516,64 @@ body {
   color: var(--accent);
 }
 
-/* Carte NON giocabili: più piccole e spente */
+/* Carte NON giocabili: dimensione normale ma un po’ spente */
 .hand-card.unplayable {
-  transform: scale(0.75);
+  transform: scale(1);
   transform-origin: bottom center;
-  opacity: 0.55;
-  filter: grayscale(0.35);
+  opacity: 0.62;
+  filter: grayscale(0.25);
   border-color: #3A4A5A;
 }
 .hand-card.unplayable:hover {
-  transform: scale(0.78) translateY(-2px);
+  transform: scale(1.03) translateY(-3px);
+  opacity: 0.8;
 }
 
-/* Carte GIOCABILI: 50% più grandi + alone lampeggiante */
+/* Carte GIOCABILI: ~28% più grandi + alone dorato soft lampeggiante */
 .hand-card.playable {
-  transform: scale(1.5);
+  transform: scale(1.28);
   transform-origin: bottom center;
   z-index: 5;
   border-color: #FFD54F;
-  box-shadow: 0 0 12px 4px rgba(255, 213, 79, 0.55);
-  animation: playable-glow 1.4s ease-in-out infinite alternate;
+  box-shadow: 0 0 14px 5px rgba(255, 213, 79, 0.5);
+  animation: playable-glow 1.6s ease-in-out infinite alternate;
 }
 .hand-card.playable:hover {
-  transform: scale(1.55) translateY(-6px);
+  transform: scale(1.32) translateY(-5px);
 }
 .hand-card.playable.selected {
-  box-shadow: 0 0 18px 6px rgba(255, 213, 79, 0.85);
+  box-shadow: 0 0 20px 7px rgba(255, 213, 79, 0.8);
 }
 
 @keyframes playable-glow {
   from {
-    box-shadow: 0 0 10px 3px rgba(255, 213, 79, 0.4);
+    box-shadow: 0 0 10px 3px rgba(255, 213, 79, 0.35);
   }
   to {
-    box-shadow: 0 0 22px 8px rgba(255, 213, 79, 0.75);
+    box-shadow: 0 0 18px 7px rgba(255, 213, 79, 0.7);
   }
 }
 
 .log-panel {
-  padding: 12px;
-  flex: 1;
-  overflow-y: auto;
-  font-size: 0.85rem;
+  padding: 10px 12px;
+  flex: 0 0 auto;
+  max-height: 140px;
+  overflow-y: hidden;
+  font-size: 0.8rem;
+  cursor: pointer;
+  position: relative;
+}
+.log-panel::after {
+  content: "Clicca per leggere tutto il log";
+  position: absolute;
+  bottom: 4px;
+  right: 10px;
+  font-size: 0.7rem;
+  color: #6B7A8A;
+  opacity: 0.7;
 }
 .log-entry {
-  padding: 6px 0;
+  padding: 4px 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   color: var(--text-dim);
 }

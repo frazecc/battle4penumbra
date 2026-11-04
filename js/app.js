@@ -127,20 +127,25 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
     numAI: numAI,
     numFallenTemples: setupFallen
   });
-  draftFirstMessageShown = false; // reset per ogni nuova partita
+  humanDraftPicksDone = 0;
   game.startDraft();
-  renderDraft();
   showScreen("draft");
+
+  // Messaggio iniziale subito all'avvio del draft
+  showDraftAtmosphere(
+    "Abbraccia l'eternità.<br>Assaggia il potere.",
+    () => {
+      renderDraft();
+    }
+  );
 });
 
 document.getElementById("btn-back-home")?.addEventListener("click", () => showScreen("home"));
 
 // ---------- DRAFT ----------
-// Flag per sapere se abbiamo già mostrato il messaggio iniziale del draft
-let draftFirstMessageShown = false;
+let humanDraftPicksDone = 0; // 0, 1, 2, 3
 
 function showDraftAtmosphere(message, onContinue) {
-  // Rimuovi eventuale overlay precedente
   let overlay = document.getElementById("draft-atmosphere-overlay");
   if (overlay) overlay.remove();
 
@@ -148,7 +153,7 @@ function showDraftAtmosphere(message, onContinue) {
   overlay.id = "draft-atmosphere-overlay";
   overlay.style.cssText = `
     position: fixed; inset: 0; z-index: 2000;
-    background: rgba(0,0,0,0.92);
+    background: rgba(0,0,0,0.93);
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
     text-align: center; padding: 24px;
@@ -156,17 +161,16 @@ function showDraftAtmosphere(message, onContinue) {
   `;
 
   overlay.innerHTML = `
-    <div style="max-width:520px; color:#E0D6C8; font-size:1.35rem; line-height:1.6; margin-bottom:32px; letter-spacing:0.03em;">
+    <div style="max-width:520px; color:#E0D6C8; font-size:1.4rem; line-height:1.65; margin-bottom:36px; letter-spacing:0.03em;">
       ${message}
     </div>
-    <button id="draft-ho-capito" class="btn btn-primary" style="padding:12px 32px; font-size:1.1rem;">
+    <button id="draft-ho-capito" class="btn btn-primary" style="padding:12px 36px; font-size:1.1rem;">
       Ho capito
     </button>
   `;
 
   document.body.appendChild(overlay);
 
-  // Nascondi le bustine mentre c'è l'overlay
   const container = document.getElementById("packs-container");
   if (container) container.style.visibility = "hidden";
 
@@ -183,9 +187,23 @@ function renderDraft() {
   const statusEl = document.getElementById("draft-status");
   const turnEl = document.getElementById("draft-turn-info");
 
+  // Draft finito → messaggio finale poi avvio partita
   if (!picker || game.draft.currentPick >= game.draft.totalPicksNeeded) {
     statusEl.textContent = "Draft completato!";
-    turnEl.textContent = "Avvio partita...";
+    turnEl.textContent = "";
+    const container = document.getElementById("packs-container");
+    if (container) container.innerHTML = "";
+
+    showDraftAtmosphere(
+      "…e così, nuovamente, comincia!",
+      () => {
+        if (game.phase === "playing") startGameUI();
+        else {
+          // sicurezza
+          if (typeof startGameUI === "function") startGameUI();
+        }
+      }
+    );
     return;
   }
 
@@ -197,7 +215,6 @@ function renderDraft() {
   container.innerHTML = "";
   container.style.visibility = "visible";
 
-  // Mostra solo le 3 bustine selezionabili
   game.draft.packs.forEach((pack, pi) => {
     const packEl = document.createElement("div");
     packEl.className = "pack pack-sealed" + (picker.isHuman ? " active-pack" : "");
@@ -213,41 +230,38 @@ function renderDraft() {
 
     if (picker.isHuman) {
       packEl.addEventListener("click", () => {
-        // Prima scelta umana: messaggio speciale
-        const isFirstHumanPick = !draftFirstMessageShown;
         game.draftPickPack(pi);
+        humanDraftPicksDone++;
 
-        if (isFirstHumanPick) {
-          draftFirstMessageShown = true;
-          showDraftAtmosphere(
-            "Abbraccia l'eternità.<br>Assaggia il potere.",
-            () => {
-              renderDraft();
-              if (game.phase === "playing") startGameUI();
-            }
-          );
+        let nextMessage = null;
+        if (humanDraftPicksDone === 1) {
+          nextMessage = "Le altre entità stanno ancora valutando quale destino percorrere.";
+        } else if (humanDraftPicksDone === 2) {
+          nextMessage = "Sei pronto?";
+        }
+        // dopo la terza scelta il messaggio finale viene gestito quando il draft finisce
+
+        if (nextMessage) {
+          showDraftAtmosphere(nextMessage, () => {
+            renderDraft();
+            if (game.phase === "playing") startGameUI();
+          });
         } else {
-          showDraftAtmosphere(
-            "Le altre entità stanno ancora valutando quale destino percorrere.",
-            () => {
-              renderDraft();
-              if (game.phase === "playing") startGameUI();
-            }
-          );
+          renderDraft();
+          if (game.phase === "playing") startGameUI();
         }
       });
     }
     container.appendChild(packEl);
   });
 
-  // Durante il draft NON si vedono le carte di nessuno
   const picksEl = document.getElementById("player-picks");
   if (picksEl) {
     picksEl.innerHTML = "";
     picksEl.style.display = "none";
   }
 
-  // AI auto (dopo che l'umano ha chiuso l'overlay, renderDraft viene richiamato)
+  // AI auto-pick
   if (picker && !picker.isHuman && game.draft.currentPick < game.draft.totalPicksNeeded) {
     setTimeout(() => {
       game._processAIDraftPacks();
@@ -306,6 +320,38 @@ window.onTrapPrompt = function(pending) {
   modal.classList.remove("hidden");
   modal.style.display = "flex";
 };
+
+// ---------- LOG COMPLETO ----------
+function showFullLog() {
+  if (!game) return;
+  let modal = document.getElementById("full-log-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "full-log-modal";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:1500;";
+    modal.innerHTML = `
+      <div style="background:#0D1B2A;border:1px solid #2A3A4A;border-radius:14px;width:90%;max-width:520px;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;">
+        <div style="padding:14px 18px;border-bottom:1px solid #2A3A4A;display:flex;justify-content:space-between;align-items:center;">
+          <strong style="color:var(--accent);font-size:1.1rem;">Log completo della partita</strong>
+          <button id="close-full-log" class="btn" style="padding:6px 14px;">Chiudi</button>
+        </div>
+        <div id="full-log-content" style="padding:14px 18px;overflow-y:auto;flex:1;font-size:0.9rem;line-height:1.5;"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    document.getElementById("close-full-log").onclick = () => {
+      modal.style.display = "none";
+    };
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) modal.style.display = "none";
+    });
+  }
+  const content = document.getElementById("full-log-content");
+  content.innerHTML = game.log.slice().reverse().map(l =>
+    "<div class=\"log-entry" + (l.important ? " important" : "") + "\" style=\"padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.06);\">" + l.msg + "</div>"
+  ).join("");
+  modal.style.display = "flex";
+}
 
 // ---------- MOSTRISSIMI PANEL ----------
 function renderMostrissimi() {
@@ -579,9 +625,16 @@ function renderGameState() {
 
   const logEl = document.getElementById("game-log");
   if (logEl) {
-    logEl.innerHTML = game.log.slice(-40).reverse().map(l =>
-      "<div class=\"log-entry" + (l.important?" important":"") + "\">" + l.msg + "</div>"
+    // Mostra solo gli ultimi 5 messaggi
+    const lastFive = game.log.slice(-5).reverse();
+    logEl.innerHTML = lastFive.map(l =>
+      "<div class=\"log-entry" + (l.important ? " important" : "") + "\">" + l.msg + "</div>"
     ).join("");
+
+    // Click sul log → apre il log completo
+    logEl.onclick = function() {
+      showFullLog();
+    };
   }
 
   const btnEnd = document.getElementById("btn-end-turn");

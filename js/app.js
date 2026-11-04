@@ -555,9 +555,13 @@ window.onGameEnd = function(g) {
   const modal = document.getElementById("endgame-modal");
   const title = document.getElementById("endgame-title");
   const msg = document.getElementById("endgame-msg");
-  if (!modal) return;
+  if (!modal) {
+    console.error("endgame-modal non trovato");
+    return;
+  }
   modal.classList.remove("hidden");
   modal.style.display = "flex";
+
   if (g.winner) {
     if (g.winner.isHuman) {
       title.textContent = "Vittoria!";
@@ -572,42 +576,41 @@ window.onGameEnd = function(g) {
     title.textContent = "Fine Partita";
     msg.textContent = g.loseReason || "La partita è terminata.";
   }
-};
 
-function closeEndgameModal() {
-  const modal = document.getElementById("endgame-modal");
-  if (modal) {
-    modal.classList.add("hidden");
-    modal.style.display = "none";
-  }
-}
-
-document.getElementById("btn-view-map")?.addEventListener("click", () => {
-  // Chiudi solo il popup: resti sulla mappa e puoi leggere il log
-  closeEndgameModal();
-  if (typeof renderGameState === "function") renderGameState();
-  if (typeof MapRenderer !== "undefined") MapRenderer.render();
-  if (game) game.addLog("Puoi scorrere il log a destra per capire cosa è successo. Usa il menu quando vuoi tornare alla Home.");
-  // Mostra un piccolo banner per tornare a casa se serve
-  let bar = document.getElementById("postgame-bar");
-  if (!bar) {
-    bar = document.createElement("div");
-    bar.id = "postgame-bar";
-    bar.style.cssText = "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:998;display:flex;gap:10px;background:rgba(13,27,42,0.95);border:1px solid var(--border);border-radius:12px;padding:10px 16px;";
-    bar.innerHTML = '<button id="btn-postgame-home" class="btn btn-primary">Torna alla Home</button>';
-    document.body.appendChild(bar);
-    document.getElementById("btn-postgame-home").onclick = () => {
-      bar.remove();
+  // Collega i bottoni ORA (quando il modal è visibile) – evita listener persi
+  const btnHome = document.getElementById("btn-back-to-home");
+  const btnMap = document.getElementById("btn-view-map");
+  if (btnHome) {
+    btnHome.onclick = function() {
+      modal.classList.add("hidden");
+      modal.style.display = "none";
+      const bar = document.getElementById("postgame-bar");
+      if (bar) bar.remove();
       game = null;
       showScreen("home");
     };
   }
-});
-
-document.getElementById("btn-back-to-home")?.addEventListener("click", () => {
-  closeEndgameModal();
-  const bar = document.getElementById("postgame-bar");
-  if (bar) bar.remove();
-  game = null;
-  showScreen("home");
-});
+  if (btnMap) {
+    btnMap.onclick = function() {
+      modal.classList.add("hidden");
+      modal.style.display = "none";
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+      let bar = document.getElementById("postgame-bar");
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.id = "postgame-bar";
+        bar.style.cssText = "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:998;display:flex;gap:10px;background:rgba(13,27,42,0.95);border:1px solid #2A3A4A;border-radius:12px;padding:10px 16px;";
+        bar.innerHTML = '<button id="btn-postgame-home" class="btn btn-primary">Torna alla Home</button>';
+        document.body.appendChild(bar);
+        document.getElementById("btn-postgame-home").onclick = function() {
+          bar.remove();
+          game = null;
+          showScreen("home");
+        };
+      }
+      if (game) game.addLog("Scorri il log a destra per capire cosa è successo.");
+      if (typeof renderGameState === "function") renderGameState();
+    };
+  }
+};

@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 009
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 010
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -162,6 +162,9 @@ situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+010 – Fine partita: bottoni Home / Guarda mappa collegati con onclick al momento
+      in cui si apre il modal (il addEventListener a caricamento pagina non partiva).
+
 
 009 – Fine partita: fix "Torna alla Home" (display inline bloccava il click).
       Nuovo tasto "Guarda la mappa" per leggere il log dopo la sconfitta.

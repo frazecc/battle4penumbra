@@ -201,7 +201,71 @@ function renderDraft() {
 function startGameUI() {
   showScreen("game");
   MapRenderer.init("gameCanvas", game);
-  window.onGameUpdate = renderGameState;
+  
+// ---------- TRAP POPUP ----------
+window.onTrapPrompt = function(pending) {
+  const modal = document.getElementById("trap-modal");
+  const list = document.getElementById("trap-options");
+  const title = document.getElementById("trap-title");
+  if (!modal || !list) return;
+  title.textContent = "Trappola disponibile! (" + pending.trigger + ")";
+  list.innerHTML = "";
+  pending.options.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary";
+    btn.style.width = "100%";
+    btn.style.marginBottom = "8px";
+    btn.textContent = t.name + " (costo " + t.cost + ") – " + (t.effect || "").substring(0, 50);
+    btn.onclick = () => {
+      if (game) {
+        game.activatePendingTrap(t.instanceId);
+        modal.classList.add("hidden");
+        modal.style.display = "none";
+        if (window.onGameUpdate) window.onGameUpdate();
+      }
+    };
+    list.appendChild(btn);
+  });
+  const skip = document.createElement("button");
+  skip.className = "btn";
+  skip.style.width = "100%";
+  skip.textContent = "Ignora";
+  skip.onclick = () => {
+    if (game) game.declinePendingTrap();
+    modal.classList.add("hidden");
+    modal.style.display = "none";
+  };
+  list.appendChild(skip);
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+
+// ---------- MOSTRISSIMI PANEL ----------
+function renderMostrissimi() {
+  const el = document.getElementById("mostrissimi-panel");
+  if (!el || !game) return;
+  el.innerHTML = "<div style=\"font-weight:700;color:var(--accent);margin-bottom:8px;\">Mostrissimi (Pool)</div>";
+  game.mostrissimiPool.forEach((m, i) => {
+    const div = document.createElement("div");
+    div.className = "hand-card";
+    div.style.cursor = "pointer";
+    div.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + m.color + "\"></span>" + m.name + "</div>" +
+      "<div class=\"meta\">Sac " + m.sacrifice + " • " + m.atk + "/" + m.hp + "</div>" +
+      "<div class=\"meta\" style=\"font-size:0.7rem;\">" + (m.effect||"").substring(0,40) + "...</div>";
+    div.onclick = () => {
+      if (!game.currentEntity.isHuman) return;
+      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare o Tempio per evocarlo (servono " + m.sacrifice + " sacrifici).");
+      game.selectedCard = { ...m, instanceId: m.instanceId + "_sum_" + Date.now() };
+      game.playMode = true;
+      game.moveMode = false;
+      game.selectedUnit = null;
+      if (window.onGameUpdate) window.onGameUpdate();
+    };
+    el.appendChild(div);
+  });
+}
+
+window.onGameUpdate = renderGameState;
   renderGameState();
   if (!game.currentEntity.isHuman) {
     setTimeout(() => game.runAITurn(), 900);
@@ -272,6 +336,7 @@ function renderGameState() {
     MapRenderer.setGame(game);
     MapRenderer.render();
   }
+  renderMostrissimi();
 }
 
 document.getElementById("btn-end-turn")?.addEventListener("click", () => {
@@ -292,6 +357,70 @@ document.getElementById("btn-cancel-action")?.addEventListener("click", () => {
   game.addLog("Azione annullata.");
   renderGameState();
 });
+
+
+// ---------- TRAP POPUP ----------
+window.onTrapPrompt = function(pending) {
+  const modal = document.getElementById("trap-modal");
+  const list = document.getElementById("trap-options");
+  const title = document.getElementById("trap-title");
+  if (!modal || !list) return;
+  title.textContent = "Trappola disponibile! (" + pending.trigger + ")";
+  list.innerHTML = "";
+  pending.options.forEach(t => {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary";
+    btn.style.width = "100%";
+    btn.style.marginBottom = "8px";
+    btn.textContent = t.name + " (costo " + t.cost + ") – " + (t.effect || "").substring(0, 50);
+    btn.onclick = () => {
+      if (game) {
+        game.activatePendingTrap(t.instanceId);
+        modal.classList.add("hidden");
+        modal.style.display = "none";
+        if (window.onGameUpdate) window.onGameUpdate();
+      }
+    };
+    list.appendChild(btn);
+  });
+  const skip = document.createElement("button");
+  skip.className = "btn";
+  skip.style.width = "100%";
+  skip.textContent = "Ignora";
+  skip.onclick = () => {
+    if (game) game.declinePendingTrap();
+    modal.classList.add("hidden");
+    modal.style.display = "none";
+  };
+  list.appendChild(skip);
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+
+// ---------- MOSTRISSIMI PANEL ----------
+function renderMostrissimi() {
+  const el = document.getElementById("mostrissimi-panel");
+  if (!el || !game) return;
+  el.innerHTML = "<div style=\"font-weight:700;color:var(--accent);margin-bottom:8px;\">Mostrissimi (Pool)</div>";
+  game.mostrissimiPool.forEach((m, i) => {
+    const div = document.createElement("div");
+    div.className = "hand-card";
+    div.style.cursor = "pointer";
+    div.innerHTML = "<div class=\"name\"><span class=\"color-dot color-" + m.color + "\"></span>" + m.name + "</div>" +
+      "<div class=\"meta\">Sac " + m.sacrifice + " • " + m.atk + "/" + m.hp + "</div>" +
+      "<div class=\"meta\" style=\"font-size:0.7rem;\">" + (m.effect||"").substring(0,40) + "...</div>";
+    div.onclick = () => {
+      if (!game.currentEntity.isHuman) return;
+      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare o Tempio per evocarlo (servono " + m.sacrifice + " sacrifici).");
+      game.selectedCard = { ...m, instanceId: m.instanceId + "_sum_" + Date.now() };
+      game.playMode = true;
+      game.moveMode = false;
+      game.selectedUnit = null;
+      if (window.onGameUpdate) window.onGameUpdate();
+    };
+    el.appendChild(div);
+  });
+}
 
 window.onGameUpdate = renderGameState;
 

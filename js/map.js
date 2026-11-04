@@ -185,12 +185,35 @@ const MapRenderer = {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Stats
+    // Artifact indicator (gold ring)
+    if (owner.artifactAttachedTo === unit.instanceId || unit.type === "artefatto") {
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // Shield badge
+    if (unit.shields > 0) {
+      ctx.fillStyle = "#42A5F5";
+      ctx.beginPath();
+      ctx.arc(cx + radius * 0.7, cy - radius * 0.7, 8 * this.scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.max(8, 9 * this.scale)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(unit.shields), cx + radius * 0.7, cy - radius * 0.7);
+    }
+
+    // Stats (include permanent ATK bonus)
+    const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
     ctx.fillStyle = "#0D1B2A";
     ctx.font = `bold ${Math.max(9, 11 * this.scale)}px Arial`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${unit.atk || 0}/${unit.currentHp || unit.hp || 0}`, cx, cy);
+    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy);
   },
 
   _highlightHex(q, r, color) {
@@ -265,6 +288,17 @@ const MapRenderer = {
         if (ok && window.onGameUpdate) window.onGameUpdate();
         this.render();
         return;
+      }
+
+      // Target mode (maledizioni)
+      if (this.game.targetMode) {
+        const anyUnit = this.game.getUnitAt(q, r);
+        if (anyUnit) {
+          this.game.selectTargetUnit(anyUnit);
+          if (window.onGameUpdate) window.onGameUpdate();
+          this.render();
+          return;
+        }
       }
 
       // Select own unit

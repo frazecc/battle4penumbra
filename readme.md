@@ -7,7 +7,7 @@ Sito statico completo con:
 
 ## Come metterlo online (100% gratis)
 
-### Opzione consigliata (StackBlitz → GitHub → Cloudflare Pages)
+### Opzione consigliata (StackBlitz → GitHub → Cloudflare Pages) 
 
 1. Vai su https://stackblitz.com
 2. Clicca **Open WebContainer** o crea nuovo progetto **Vanilla** / **HTML**

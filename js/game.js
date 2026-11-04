@@ -974,19 +974,30 @@ class GameState {
         this.addLog(u.name + " (Pianura) ottiene +1 ATK permanente");
       }
     });
-    // Evento a fine turno: scegli random una cella con creatura, evento random della zona
+    // Fine turno: SCOPRI (flip) tutte le celle con creature del giocatore
+    // + un evento casuale su una di quelle celle
     if (current.field.length > 0) {
-      const u = current.field[Math.floor(Math.random() * current.field.length)];
+      const occupied = [];
+      current.field.forEach(u => {
+        const key = u.q + "," + u.r;
+        const wasNew = !this.flippedCells.has(key);
+        this.flippedCells.add(key);
+        if (wasNew) {
+          const t = CELL_TYPE.get(key) || "plain";
+          this.addLog("Esagono scoperto (" + u.q + "," + u.r + "): " + t, true);
+        }
+        occupied.push(u);
+      });
+      // Un evento sulla cella di una creatura a caso
+      const u = occupied[Math.floor(Math.random() * occupied.length)];
       const key = u.q + "," + u.r;
       const type = CELL_TYPE.get(key) || "plain";
       const events = (typeof TERRAIN_EVENTS !== "undefined" && TERRAIN_EVENTS[type]) ? TERRAIN_EVENTS[type] : [];
-      if (events.length) {
+      if (events && events.length) {
         const ev = events[Math.floor(Math.random() * events.length)];
-        this.flippedCells.add(key); // scopri la cella
-        this.addLog("📜 Evento (" + type + ") su (" + u.q + "," + u.r + "): " + ev.name + " – " + (ev.passive || ""), true);
+        this.addLog("📜 Evento [" + type + "] " + ev.name + " – " + (ev.passive || ""), true);
         this._applyTerrainEvent(ev, u, current);
-      } else {
-        this.flippedCells.add(key);
+      } else if (type !== "mountain") {
         this.addLog("Nessun evento per zona " + type);
       }
     }

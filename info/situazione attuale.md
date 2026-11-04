@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 006
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 007
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -69,8 +69,9 @@ ZONE SPECIALI (1 esagono ciascuna, scoperte solo dopo flip)
 - Cimitero, Rovine, Statua, Colosseo, Circolo Rituale, Santuario, Jungla, Villaggio
 
 EVENTI
-- A fine turno: scelta random di una cella con una tua creatura
-- Evento casuale della zona → passiva scritta vicino al nome nel pannello
+- A fine turno: SCOPERTE tutte le celle con le tue creature + 1 evento casuale della zona
+- Evento → passiva scritta vicino al nome nel pannello
+- Eventi definiti per plain, temple, city e zone speciali
 
 CARTE E REGOLE BASE
 - Mostri evocabili SOLO sul proprio tempio
@@ -161,6 +162,11 @@ situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+
+007 – Pulsanti sotto carte in mano (Evoca / Lancia magia / Lega artefatto / Annulla).
+      Fine turno: flip di TUTTE le celle con creature del giocatore + evento zona.
+      Re-render mappa dopo fine turno. Rimossi duplicati in app.js.
+
 006 – Montagne sempre visibili; corona Artefatto; blocco movimento su
       cella non scoperta; pulsanti Annulla/Muovi sotto anteprima.
 005 – Fix SyntaxError (else doppio) che impediva “Inizia Draft”.

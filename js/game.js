@@ -174,8 +174,20 @@ class GameState {
   get activePlayers() { return this.entities.filter(e => !e.isFallen); }
 
   addLog(msg, important = false) {
-    this.log.push({ msg, important, turn: this.turnNumber, time: Date.now() });
-    if (this.log.length > 400) this.log.shift();
+    const ts = new Date().toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const entry = {
+      msg: "[" + ts + " T" + this.turnNumber + "] " + msg,
+      important,
+      turn: this.turnNumber,
+      time: Date.now(),
+      phase: this.phase,
+      current: this.currentEntity ? this.currentEntity.name : "?"
+    };
+    this.log.push(entry);
+    if (this.log.length > 600) this.log.shift();
+    // Anche in console browser per debug
+    if (important) console.log("%c" + entry.msg, "color:#FFD54F");
+    else console.log(entry.msg);
   }
 
   _revealAround(entity, q, r, radius = 2) {
@@ -428,7 +440,11 @@ class GameState {
     this.currentEntity.startTurn();
     // Token gratuito a tutte le entità (anche cadute) sul tempio
     this.entities.forEach(e => this._spawnFreeToken(e));
-    this.addLog("Inizia la partita! Primo: " + this.currentEntity.name, true);
+    this.addLog("=== PARTITA AVVIATA (v" + (typeof APP_VERSION !== "undefined" ? APP_VERSION : "?") + ") ===", true);
+    this.addLog("Primo giocatore: " + this.currentEntity.name + " | Entità attive: " + actives.map(e => e.name).join(", "), true);
+    this.entities.forEach(e => {
+      this.addLog(e.name + " — mano: " + e.hand.length + " carte, campo: " + e.field.length + ", tempio: " + (e.templeName || e.templeKey));
+    });
   }
 
   selectCardFromHand(instanceId) {
@@ -601,7 +617,7 @@ class GameState {
     this.moveMode = true;
     this.targetMode = null;
     const free = !unit.movedThisTurn;
-    this.addLog("Selezionato " + unit.name + ". Clicca cella adiacente" + (free ? " (primo passo gratuito)" : " (1 mana)") + (unit.isWithered ? " — AVVIZZITA, non può agire" : "") + ".");
+    this.addLog("Selezionato " + unit.name + " in (" + unit.q + "," + unit.r + "). moveMode=true. Clicca cella adiacente" + (free ? " (primo passo gratuito)" : " (1 mana)") + (unit.isWithered ? " — AVVIZZITA, non può agire" : "") + ".");
   }
 
   isCellDiscovered(q, r, entity) {

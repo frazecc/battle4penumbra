@@ -2,8 +2,17 @@
 // MAIN APPLICATION (Fasi 0-6)
 // =====================================================
 
+// OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
+const APP_VERSION = "018";
+
 let game = null;
 let currentScreen = "auth";
+
+// Aggiorna il numero versione nella home
+document.addEventListener("DOMContentLoaded", () => {
+  const el = document.getElementById("app-version");
+  if (el) el.textContent = "v" + APP_VERSION;
+});
 
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
@@ -650,9 +659,9 @@ function renderGameState() {
 
   const logEl = document.getElementById("game-log");
   if (logEl) {
-    // Mostra solo gli ultimi 5 messaggi
-    const lastFive = game.log.slice(-5).reverse();
-    logEl.innerHTML = lastFive.map(l =>
+    // Mostra solo gli ultimi 6 messaggi (il log completo resta disponibile col click)
+    const lastFew = game.log.slice(-6).reverse();
+    logEl.innerHTML = lastFew.map(l =>
       "<div class=\"log-entry" + (l.important ? " important" : "") + "\">" + l.msg + "</div>"
     ).join("");
 

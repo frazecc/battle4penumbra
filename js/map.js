@@ -389,11 +389,13 @@ const MapRenderer = {
         // Move / Attack mode – priorità assoluta, non deve mai aprire l'anteprima
         if (this.game.moveMode && this.game.selectedUnit) {
           this.game.tryMoveOrAttack(q, r);
-          // Chiudi eventuali anteprime aperte
+          // Chiudi eventuali anteprime aperte e non riaprirle in questo click
           if (typeof closeCardDetail === "function") closeCardDetail();
+          this.game.selectedUnit = null;
+          this.game.moveMode = false;
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
-          return; // SEMPRE return: non aprire mai l'anteprima mentre si è in modalità Muovi
+          return; // SEMPRE return: questo click non deve aprire nessuna anteprima
         }
 
         // Target mode (maledizioni)
@@ -421,12 +423,18 @@ const MapRenderer = {
           }
         }
 
-        // Select own unit (solo se non siamo in nessuna modalità azione)
+        // Click su creatura propria: mostra SOLO l'anteprima (non entra in modalità Muovi)
         const human = this.game.entities.find(e => e.isHuman);
         if (human && this.game.currentEntity.isHuman && !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode) {
           const unit = human.field.find(u => u.q === q && u.r === r);
           if (unit) {
-            this.game.selectUnit(unit.instanceId);
+            // Seleziona la creatura ma NON attivare moveMode
+            this.game.selectedUnit = unit;
+            this.game.selectedCard = null;
+            this.game.moveMode = false;
+            this.game.playMode = false;
+            this.game.attachMode = false;
+            this.game.targetMode = null;
             if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
             if (window.onGameUpdate) window.onGameUpdate();
             this.render();

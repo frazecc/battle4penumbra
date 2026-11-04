@@ -1,22 +1,19 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 016
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 017
 ================================================================================
 
 FIX IN QUESTA CONSEGNA
-- Non si perde più a inizio Turno 1 se l’Artefatto è ancora in mano
-  (la condizione di sconfitta non scatta nel primo turno se hai ancora
-  l’Artefatto in mano e non hai avuto modo di giocarlo)
-- Draft: dopo il messaggio iniziale vedi SOLO le buste che puoi
-  selezionare. Le scelte delle IA avvengono in background senza
-  mostrare buste non cliccabili.
-- Niente più flash di buste inutili.
+- Click su creatura in campo → apre SOLO l’anteprima (non entra più
+  automaticamente in modalità Muovi)
+- Solo cliccando il bottone “Muovi” nell’anteprima si attiva la modalità movimento
+- Dopo il movimento la preview non si riapre più
 
-FILE MODIFICATI
-- js/game.js
-- js/app.js
+FILE MODIFICATO
+- js/map.js
 
-COSE ANCORA DA VERIFICARE DOPO QUESTA CONSEGNA
-- Bug del movimento (riapertura anteprima) – da testare appena
-  non si perde più a inizio partita
+COME TESTARE
+1. Clicca una tua creatura → deve aprirsi l’anteprima con Annulla / Muovi
+2. Clicca Muovi → chiude l’anteprima, sei in modalità movimento
+3. Clicca una cella adiacente → la creatura si muove e NON si riapre l’anteprima
 ================================================================================

@@ -219,18 +219,33 @@ function renderDraft() {
     return;
   }
 
+  const container = document.getElementById("packs-container");
+  container.innerHTML = "";
+
+  // Se non è il turno dell'umano → non mostrare buste, lascia fare le IA in background
+  if (!picker.isHuman) {
+    statusEl.textContent = "Le altre entità stanno scegliendo...";
+    turnEl.textContent = "";
+    container.style.visibility = "hidden";
+
+    setTimeout(() => {
+      game._processAIDraftPacks();
+      renderDraft();
+      if (game.phase === "playing") startGameUI();
+    }, 600);
+    return;
+  }
+
+  // È il turno dell'umano → mostra SOLO le 3 buste selezionabili
   statusEl.textContent = "Scelta di: " + picker.name;
   turnEl.textContent = "Bustina " + (game.draft.currentPick + 1) + " di " + game.draft.totalPicksNeeded +
     " — Scegli una bustina (colore). Le carte restano nascoste.";
-
-  const container = document.getElementById("packs-container");
-  container.innerHTML = "";
   container.style.visibility = "visible";
 
   game.draft.packs.forEach((pack, pi) => {
     const packEl = document.createElement("div");
-    packEl.className = "pack pack-sealed" + (picker.isHuman ? " active-pack" : "");
-    packEl.style.cursor = picker.isHuman ? "pointer" : "default";
+    packEl.className = "pack pack-sealed active-pack";
+    packEl.style.cursor = "pointer";
 
     packEl.innerHTML =
       '<div class="pack-sealed-inner color-bg-' + pack.color + '">' +
@@ -238,32 +253,34 @@ function renderDraft() {
         '<div class="pack-sealed-color">' + (COLOR_NAMES[pack.color] || pack.color) + '</div>' +
         '<div class="pack-sealed-hint">3 carte nascoste</div>' +
       '</div>' +
-      (picker.isHuman ? '<button class="btn btn-primary" style="width:100%;margin-top:12px;">Scegli questa bustina</button>' : '');
+      '<button class="btn btn-primary" style="width:100%;margin-top:12px;">Scegli questa bustina</button>';
 
-    if (picker.isHuman) {
-      packEl.addEventListener("click", () => {
-        game.draftPickPack(pi);
-        humanDraftPicksDone++;
+    packEl.addEventListener("click", () => {
+      game.draftPickPack(pi);
+      humanDraftPicksDone++;
 
-        let nextMessage = null;
-        if (humanDraftPicksDone === 1) {
-          nextMessage = "Le altre entità stanno ancora valutando quale destino percorrere.";
-        } else if (humanDraftPicksDone === 2) {
-          nextMessage = "Sei pronto?";
-        }
-        // dopo la terza scelta il messaggio finale viene gestito quando il draft finisce
+      let nextMessage = null;
+      if (humanDraftPicksDone === 1) {
+        nextMessage = "Le altre entità stanno ancora valutando quale destino percorrere.";
+      } else if (humanDraftPicksDone === 2) {
+        nextMessage = "Sei pronto?";
+      }
 
-        if (nextMessage) {
-          showDraftAtmosphere(nextMessage, () => {
-            renderDraft();
-            if (game.phase === "playing") startGameUI();
-          });
-        } else {
+      if (nextMessage) {
+        // Nascondi subito le buste mentre c'è il messaggio
+        container.innerHTML = "";
+        container.style.visibility = "hidden";
+        showDraftAtmosphere(nextMessage, () => {
           renderDraft();
           if (game.phase === "playing") startGameUI();
-        }
-      });
-    }
+        });
+      } else {
+        container.innerHTML = "";
+        container.style.visibility = "hidden";
+        renderDraft();
+        if (game.phase === "playing") startGameUI();
+      }
+    });
     container.appendChild(packEl);
   });
 
@@ -271,15 +288,6 @@ function renderDraft() {
   if (picksEl) {
     picksEl.innerHTML = "";
     picksEl.style.display = "none";
-  }
-
-  // AI auto-pick
-  if (picker && !picker.isHuman && game.draft.currentPick < game.draft.totalPicksNeeded) {
-    setTimeout(() => {
-      game._processAIDraftPacks();
-      renderDraft();
-      if (game.phase === "playing") startGameUI();
-    }, 700);
   }
 }
 

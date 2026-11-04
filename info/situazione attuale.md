@@ -1,65 +1,22 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
-File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 015
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 016
 ================================================================================
 
-ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
---------------------------------------------------------------------------------
-1. Questo file DEVE essere aggiornato OGNI SINGOLA VOLTA che si modifica
-   o si consegna un file del progetto.
-2. Ogni consegna va in una sottocartella numerata crescente.
-3. Nella sottocartella vanno SOLO i file modificati + questo file.
-4. Non reinventare regole già decise.
-5. Preferenze FRA: italiano semplice, domande chiare, passi piccoli.
+FIX IN QUESTA CONSEGNA
+- Non si perde più a inizio Turno 1 se l’Artefatto è ancora in mano
+  (la condizione di sconfitta non scatta nel primo turno se hai ancora
+  l’Artefatto in mano e non hai avuto modo di giocarlo)
+- Draft: dopo il messaggio iniziale vedi SOLO le buste che puoi
+  selezionare. Le scelte delle IA avvengono in background senza
+  mostrare buste non cliccabili.
+- Niente più flash di buste inutili.
 
+FILE MODIFICATI
+- js/game.js
+- js/app.js
 
-================================================================================
-COSE FATTE (riassunto aggiornato)
-================================================================================
-
-DRAFT
-- Sequenza messaggi completa a schermo intero + “Ho capito”
-- All’avvio: nessun flash delle buste (container pulito e nascosto)
-
-MANO
-- Dimensione standard fissa (120×105 px)
-- Giocabili: 15% più grandi + alone dorato soft
-- Non giocabili: dimensione normale, un po’ spente
-- Una sola riga, carte più strette per ridurre lo scroll
-- Ordine: costo crescente → Artefatto → Mostro → Mostrissimo → Maledizione → Trappola → altro → alfabetico
-
-MOVIMENTO
-- Fix definitivo: mentre si è in modalità Muovi, il click sulla mappa
-  non riapre mai l’anteprima della creatura (chiude eventuali modal aperti)
-
-LOG
-- Ultimi 5 messaggi + click per log completo
-
-
-================================================================================
-COSE DA FARE A BREVE
-================================================================================
-1. UX mappa mobile ulteriore se necessario
-2. Completare timing trappole
-3. Completare effetti carte a metà
-4. Verificare eventi zone speciali
-5. Rifinire entità cadute
-
-
-================================================================================
-ULTIME CONSEGNE
-================================================================================
-015 – Fix flash draft + dimensioni carte standard + ordine tipi + fix bug Muovi
-     File: js/app.js, js/map.js, css/style.css
-
-014 – Sequenza messaggi draft completa + log 5 messaggi + area mano
-013 – Carte illuminate + draft atmosferico base
-012 – Avvizzito + primo movimento gratuito
-011 – Caduto umano + fog congelata
-…
-
-
-================================================================================
-FINE
+COSE ANCORA DA VERIFICARE DOPO QUESTA CONSEGNA
+- Bug del movimento (riapertura anteprima) – da testare appena
+  non si perde più a inizio partita
 ================================================================================

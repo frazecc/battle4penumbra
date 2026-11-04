@@ -1112,7 +1112,13 @@ class GameState {
       }
     }
     if (!current.isFallen) {
-      if (!current.hasArtifactOnField()) {
+      // L'Artefatto deve essere SUL CAMPO a fine turno.
+      // Eccezione di sicurezza: non far scattare la sconfitta se siamo ancora al turnNumber 1
+      // e il giocatore ha ancora l'Artefatto in mano (non ha avuto modo di giocarlo).
+      const hasArtInHand = current.hand.some(c => c.id === "artifact" || c.type === "artefatto");
+      const shouldCheckArtifact = !(this.turnNumber <= 1 && hasArtInHand);
+
+      if (shouldCheckArtifact && !current.hasArtifactOnField()) {
         // Snapshot della visione PRIMA di segnare caduto (serve per "Guarda la mappa")
         if (current.isHuman) {
           this.frozenVisibility = new Set();

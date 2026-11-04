@@ -5,8 +5,8 @@
 const MapRenderer = {
   canvas: null,
   ctx: null,
-  size: 22,
-  scale: 1,
+  size: 28,
+  scale: 1.2,
   offsetX: 0,
   offsetY: 0,
   isDragging: false,
@@ -62,8 +62,17 @@ const MapRenderer = {
     const rect = this.canvas.getBoundingClientRect();
     this.offsetX = rect.width / 2;
     this.offsetY = rect.height / 2;
-    this.scale = 1;
-    this.size = 22;
+    // Auto-fit: mappa ~ radius 8 hex → diametro ~ 16*size*sqrt(3)
+    // Vogliamo che stia nel canvas con un po' di margine
+    const mapRadius = 9; // coordinate max circa
+    const neededW = mapRadius * 2 * this.size * Math.sqrt(3);
+    const neededH = mapRadius * 2 * this.size * 1.5;
+    const fitScale = Math.min(
+      (rect.width * 0.92) / Math.max(neededW, 1),
+      (rect.height * 0.92) / Math.max(neededH, 1)
+    );
+    this.scale = Math.max(0.5, Math.min(fitScale, 2.5));
+    this.size = 28;
   },
 
   render() {

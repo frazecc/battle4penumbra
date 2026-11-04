@@ -177,21 +177,12 @@ function renderDraft() {
     container.appendChild(packEl);
   });
 
-  // Picks so far
+  // Durante il draft NON si vedono le carte di nessuno
   const picksEl = document.getElementById("player-picks");
-  picksEl.innerHTML = "";
-  game.activePlayers.forEach(e => {
-    const col = document.createElement("div");
-    col.className = "pick-column " + (e.isHuman ? "human" : "ai");
-    col.innerHTML = "<h4>" + e.name + " (" + (game.draft.picks[e.id] || []).length + " carte)</h4>";
-    (game.draft.picks[e.id] || []).forEach(c => {
-      const p = document.createElement("div");
-      p.className = "picked-card";
-      p.innerHTML = '<span class="color-dot color-' + c.color + '"></span>' + c.name;
-      col.appendChild(p);
-    });
-    picksEl.appendChild(col);
-  });
+  if (picksEl) {
+    picksEl.innerHTML = "";
+    picksEl.style.display = "none";
+  }
 
   // AI auto
   if (picker && !picker.isHuman && game.draft.currentPick < game.draft.totalPicksNeeded) {
@@ -207,6 +198,8 @@ function renderDraft() {
 function startGameUI() {
   showScreen("game");
   MapRenderer.init("gameCanvas", game);
+  // Fit mappa allo schermo
+  setTimeout(() => { MapRenderer.center(); MapRenderer.render(); }, 50);
   
 // ---------- TRAP POPUP ----------
 window.onTrapPrompt = function(pending) {
@@ -437,8 +430,8 @@ function fitToScreen() {
   const h = window.innerHeight;
   document.documentElement.style.setProperty("--vw", w + "px");
   document.documentElement.style.setProperty("--vh", h + "px");
-  // Ridimensiona canvas se in partita
   if (typeof MapRenderer !== "undefined" && MapRenderer.canvas && MapRenderer.game) {
+    MapRenderer.center();
     MapRenderer.render();
   }
 }

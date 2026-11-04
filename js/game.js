@@ -149,18 +149,24 @@ class GameState {
 
   isVisibleTo(entity, q, r) {
     if (entity.isFallen) return false;
+    // Clear fog globale / personale (Mostrissimi)
     if (this.globalClearFogUntil >= this.turnNumber) return true;
     if (entity.clearFogUntil >= this.turnNumber) return true;
+    // Sempre visibile la cella della propria creatura
     if (entity.field.some(u => u.q === q && u.r === r)) return true;
-    if (entity.templeKey === q + "," + r) return true;
+    // Visione dinamica raggio 2 attorno a ogni creatura (mostro/mostrissimo)
     for (const u of entity.field) {
-      if (hexDistance(u.q, u.r, q, r) <= 2) return true;
+      if (u.type === "mostro" || u.type === "mostrissimo" || u.id === "token_free") {
+        if (hexDistance(u.q, u.r, q, r) <= 2) return true;
+      }
     }
+    // Sempre visione attorno al proprio tempio (raggio 2)
     if (entity.templeKey) {
       const [tq, tr] = entity.templeKey.split(",").map(Number);
+      if (q === tq && r === tr) return true;
       if (hexDistance(tq, tr, q, r) <= 2) return true;
     }
-    return entity.explored.has(q + "," + r);
+    return false;
   }
 
   startDraft() {
@@ -334,17 +340,23 @@ class GameState {
     if (card.type === "mostro" || card.type === "mostrissimo") {
       if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Non puoi piazzare su una montagna!"); return false; }
       if (this.getUnitAt(q, r)) { this.addLog("Cella occupata!"); return false; }
-      if (!this.isVisibleTo(e, q, r) && e.field.length > 0) {
-        if (e.templeKey !== q + "," + r) { this.addLog("Cella non visibile!"); return false; }
+      // MOSTRO: solo sul proprio tempio
+      if (card.type === "mostro") {
+        if (e.templeKey !== (q + "," + r)) {
+          this.addLog("I mostri si evocano SOLO sul proprio Tempio!");
+          return false;
+        }
       }
+      // MOSTRISSIMO: Altare o Tempio
       if (card.type === "mostrissimo") {
         const cellType = CELL_TYPE.get(q + "," + r);
         if (cellType !== "city" && cellType !== "water") {
-          this.addLog("I Mostrissimi si evocano solo sull\\'Altare o su un Tempio!");
+          this.addLog("I Mostrissimi si evocano solo sull'Altare o su un Tempio!");
           return false;
         }
         const sac = card.sacrifice || 0;
-        if (e.field.length < sac) {
+        const permanents = e.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
+        if (permanents.length < sac) {
           this.addLog("Servono " + sac + " permanenti da sacrificare!");
           return false;
         }
@@ -1034,16 +1046,12 @@ class GameState {
   }
 
   _findPlacementHex(entity) {
-    const candidates = [];
+    // Mostri solo sul tempio
     if (entity.templeKey) {
       const [tq, tr] = entity.templeKey.split(",").map(Number);
-      candidates.push(...this._hexesInRange(tq, tr, 2));
-      candidates.unshift([tq, tr]);
-    }
-    for (const u of entity.field) candidates.push(...this._hexesInRange(u.q, u.r, 1));
-    candidates.push([0, 0]);
-    for (const [q, r] of candidates) {
-      if (CELL_TYPE.get(q + "," + r) !== "mountain" && !this.getUnitAt(q, r)) return [q, r];
+      if (CELL_TYPE.get(tq + "," + tr) !== "mountain" && !this.getUnitAt(tq, tr)) {
+        return [tq, tr];
+      }
     }
     return null;
   }

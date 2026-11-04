@@ -1,6 +1,6 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
-Aggiornamento consegna 001 – 4 Nov 2026
+Consegna 002 – 4 Nov 2026
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA:
@@ -9,33 +9,32 @@ questo file deve essere aggiornato ogni singola volta che un file viene modifica
 --------------------------------------------------------------------------------
 FIX IN QUESTA CONSEGNA
 --------------------------------------------------------------------------------
-1. DRAFT: si vede SOLO il colore della bustina (carte nascoste).
-2. VIEWPORT: misura schermo all'apertura + resize; layout responsive.
-3. ARTEFATTO: non si piazza come unità. Si LEGA a una creatura già in campo
-   (click sulla creatura dopo aver selezionato l'Artefatto dalla mano).
-   Se non hai creature in campo, non puoi giocare l'Artefatto.
-   Anello dorato sull'unità legata. Se muore → Artefatto torna in mano (+3 costo).
+1. MAPPA PIÙ GRANDE: auto-fit allo schermo (PC e mobile), size/scale aumentati,
+   canvas a tutta altezza disponibile, re-center su resize.
+2. DRAFT: non si vedono le carte di nessuno (né proprie né avversari).
+   Solo colore delle 3 bustine.
+3. FOG OF WAR DINAMICA: la nebbia copre tutto TRANNE:
+   - raggio 2 attorno a ogni tua creatura (mostro/mostrissimo/token)
+   - raggio 2 attorno al tuo tempio (sempre)
+   Non resta "esplorato" permanente: se le creature si spostano, la visione le segue.
+4. EVOCAZIONE MOSTRI: solo sul proprio Tempio (non altrove).
+   Mostrissimi: ancora Altare o Tempio + sacrifici.
 
 --------------------------------------------------------------------------------
-FILE DA CARICARE (solo questi)
+FILE DA CARICARE
 --------------------------------------------------------------------------------
-- index.html
-- css/style.css
 - js/app.js
 - js/game.js
 - js/map.js
+- css/style.css
 
 --------------------------------------------------------------------------------
 STATO SISTEMI
 --------------------------------------------------------------------------------
-- Setup: Templi Caduti 0/1/2 → IA = 3-caduti (sempre 4 entità) ✓
-- Draft a bustine (solo colore) ✓
-- Token 1/1 gratuito sul tempio a inizio turno ✓
-- Artefatto legato a creatura ✓
-- Effetti / Trappole / Mostrissimi / Eventi terreno ✓
-- Combattimento con rimbalzo ✓
-- Nebbia di guerra ✓
+Setup 4 entità, draft bustine (solo colore), token 1/1 tempio, artefatto legato,
+effetti/trappole/mostrissimi/eventi, rimbalzo, fog dinamica, summon solo tempio.
+Responsive PC/mobile migliorato.
 
-Ancora da fare: Quest, multiplayer umano, Codex, animazioni.
+Ancora da fare: Quest, multiplayer, Codex, animazioni.
 
 ================================================================================

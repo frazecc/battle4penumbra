@@ -971,7 +971,6 @@ class GameState {
         this._applyTerrainEvent(ev, u, current);
       } else {
         this.flippedCells.add(key);
-      } else {
         this.addLog("Nessun evento per zona " + type);
       }
     }

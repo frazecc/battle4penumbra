@@ -30,6 +30,11 @@ class Entity {
   startTurn() {
     this.manaMax += 1;
     this.mana = this.manaMax;
+    // Sveglia le creature avvizzite e resetta il movimento del turno
+    this.field.forEach(u => {
+      u.isWithered = false;
+      u.movedThisTurn = false;
+    });
   }
 
   canPay(cost) {
@@ -442,7 +447,16 @@ class GameState {
         });
       }
       e.hand = e.hand.filter(c => c.instanceId !== card.instanceId);
-      const unit = { ...card, q, r, currentHp: card.hp || 1, shields: 0, ownerId: e.id, permanentAtkBonus: 0 };
+      const unit = {
+        ...card,
+        q, r,
+        currentHp: card.hp || 1,
+        shields: 0,
+        ownerId: e.id,
+        permanentAtkBonus: 0,
+        movedThisTurn: false,
+        isWithered: (card.type === "mostrissimo") // Mostrissimi entrano avvizziti; mostri normali no
+      };
       e.field.push(unit);
       if (card.type === "artefatto") e.artifactAttachedTo = unit.instanceId;
       this._revealAround(e, q, r, 2);
@@ -528,7 +542,8 @@ class GameState {
     this.playMode = false;
     this.moveMode = true;
     this.targetMode = null;
-    this.addLog("Selezionato " + unit.name + ". Clicca cella adiacente (1 mana).");
+    const free = !unit.movedThisTurn;
+    this.addLog("Selezionato " + unit.name + ". Clicca cella adiacente" + (free ? " (primo passo gratuito)" : " (1 mana)") + (unit.isWithered ? " — AVVIZZITA, non può agire" : "") + ".");
   }
 
   isCellDiscovered(q, r, entity) {
@@ -544,6 +559,15 @@ class GameState {
     const e = this.currentEntity;
     if (!this.selectedUnit || !this.moveMode) return false;
     const unit = this.selectedUnit;
+
+    // Avvizzita: non può fare azioni (solo difendere)
+    if (unit.isWithered) {
+      this.addLog(unit.name + " è avvizzita e non può agire questo turno.");
+      this.moveMode = false;
+      this.selectedUnit = null;
+      return false;
+    }
+
     // Se sei su cella non scoperta non puoi muoverti oltre questo turno
     if (!this.isCellDiscovered(unit.q, unit.r, e)) {
       this.addLog("Cella inesplorata: non puoi muoverti oltre in questo turno! (si scopre a fine turno)");
@@ -554,21 +578,42 @@ class GameState {
     const dist = hexDistance(unit.q, unit.r, q, r);
     if (dist !== 1) { this.addLog("Solo 1 passo alla volta!"); return false; }
     if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }
-    if (!e.canPay(1)) { this.addLog("Mana insufficiente!"); return false; }
+
+    // Primo movimento del turno della creatura è gratuito
+    const cost = unit.movedThisTurn ? 1 : 0;
+    if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
+
     const targetUnit = this.getUnitAt(q, r);
     if (!targetUnit) {
-      e.pay(1);
+      // Movimento semplice
+      e.pay(cost);
       unit.q = q; unit.r = r;
+      unit.movedThisTurn = true;
       this._revealAround(e, q, r, 2);
-      this.addLog(unit.name + " si muove su (" + q + "," + r + ")");
-      this.selectedUnit = null; this.moveMode = false;
+
+      // Entra in esagono non scoperto → diventa avvizzita
+      if (!this.isCellDiscovered(q, r, e)) {
+        unit.isWithered = true;
+        this.addLog(unit.name + " entra in territorio inesplorato e diventa avvizzita.");
+      } else {
+        this.addLog(unit.name + " si muove su (" + q + "," + r + ")" + (cost === 0 ? " (primo passo gratuito)" : ""));
+      }
+
+      this.selectedUnit = null;
+      this.moveMode = false;
       return true;
     }
     if (targetUnit.ownerId === e.id) { this.addLog("Cella alleata!"); return false; }
-    e.pay(1);
+
+    // Attacco
+    e.pay(cost);
+    unit.movedThisTurn = true;
+    unit.isWithered = true; // attaccare avvizzisce
     const originQ = unit.q, originR = unit.r;
     this._resolveCombat(unit, targetUnit, originQ, originR);
-    this.selectedUnit = null; this.moveMode = false;
+    this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
+    this.selectedUnit = null;
+    this.moveMode = false;
     return true;
   }
 
@@ -963,7 +1008,9 @@ class GameState {
       currentHp: 1,
       shields: 0,
       ownerId: entity.id,
-      permanentAtkBonus: 0
+      permanentAtkBonus: 0,
+      movedThisTurn: false,
+      isWithered: false
     };
     entity.field.push(token);
     this._revealAround(entity, tq, tr, 2);
@@ -1215,7 +1262,9 @@ class GameState {
       }
     }
     for (const unit of [...ai.field]) {
-      if (!ai.canPay(1)) break;
+      if (unit.isWithered) continue;
+      const cost = unit.movedThisTurn ? 1 : 0;
+      if (!ai.canPay(cost)) continue;
       const neighbors = this._hexesInRange(unit.q, unit.r, 1);
       for (const [q, r] of neighbors) {
         const enemy = this.getUnitAt(q, r);
@@ -1228,7 +1277,9 @@ class GameState {
       }
     }
     for (const unit of [...ai.field]) {
-      if (!ai.canPay(1)) break;
+      if (unit.isWithered) continue;
+      const cost = unit.movedThisTurn ? 1 : 0;
+      if (!ai.canPay(cost)) continue;
       const neighbors = this._hexesInRange(unit.q, unit.r, 1);
       let best = null, bestScore = 999;
       const human = this.entities.find(e => e.isHuman);

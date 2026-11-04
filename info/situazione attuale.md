@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 011
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 012
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -44,6 +44,7 @@ SETUP E STRUTTURA
 - Setup: solo “Templi Caduti” 0/1/2 → IA = 3 − caduti (sempre 4 entità)
 - Turn order: primo giocatore casuale, poi senso orario sui templi
 - Mana: +1 max e refill a inizio turno; movimento 1 mana per passo
+  (PRIMO passo di ogni creatura per turno è GRATUITO)
 
 DRAFT
 - Stile 7 Wonders: Giro 1 orario, Giro 2 antiorario, Giro 3 orario
@@ -64,6 +65,7 @@ MAPPA E FOG
 - Celle non scoperte: aspetto anonimo identico (niente icone di zona)
 - Scoperta cella: a fine turno con evento (o tempio proprio / altare / montagna)
 - Se sei su cella NON scoperta non puoi muoverti oltre in quel turno
+- Zoom minimo abbassato (0.25) per vedere meglio la mappa
 
 ZONE SPECIALI (1 esagono ciascuna, scoperte solo dopo flip)
 - Cimitero, Rovine, Statua, Colosseo, Circolo Rituale, Santuario, Jungla, Villaggio
@@ -84,12 +86,24 @@ CARTE E REGOLE BASE
 - Trappole: popup base nel turno avversario (da completare)
 - Effetti ETB / alcuni effectId mappati (non tutti i casi complessi)
 
+AVVIZZITO (nuova regola)
+- Le creature possono essere “avvizzite” (stanche/tappate).
+- Mentre avvizzita: non può muoversi né attaccare (può solo difendere).
+- Diventa avvizzita quando:
+  a) entra in un esagono non ancora scoperto (quello con “?”)
+  b) attacca
+- Mostri normali entrano in campo NON avvizziti
+- Mostrissimi entrano in campo AVVIZZITI (indicato in dettaglio carta)
+- A inizio del proprio turno tutte le proprie creature si “svegliano” (non più avvizzite)
+- Visivo: cerchio grigio + “Z” sulla mappa
+
 CADUTI
 - Niente carte in mano, non possono vincere
 - Creature restano; a inizio turno token sul tempio se libero
 - IA caduta: insegue un nemico avvistato, altrimenti passo casuale
 - Umano caduto: modal immediato “Hai perso” + Guarda mappa / Torna Home.
   Se non ci sono più umani vivi la partita si chiude subito (le IA non giocano oltre).
+  Guarda mappa: fog congelata + possibilità di cliccare le creature visibili per vedere i dettagli.
 
 UI
 - Mappa con auto-fit allo schermo (PC e mobile, migliorabile)
@@ -98,8 +112,9 @@ UI
 - Cimitero privato (bottone nel pannello), carte cliccabili a dettaglio
 - Placeholder “Potere fazione (placeholder)” sotto ogni nome
 - Passive degli eventi elencate sotto il nome
-- Fine partita: “Guarda la mappa” mostra tutta l’interfaccia con fog of war
+- Fine partita: “Guarda la mappa” mostra tutta l’UI con fog of war
   CONGELATA esattamente al momento della sconfitta (nessuna info extra)
+- Fix: in modalità Muovi il click sulla mappa non riapre più l’anteprima del mostro
 
 
 ================================================================================
@@ -107,7 +122,7 @@ COSE DA FARE A BREVE (prossimo lavoro utile)
 ================================================================================
 Ordine consigliato (da confermare con FRA quando chiede “cosa facciamo ora?”):
 
-1. Sistemare / bilanciare UX mappa su mobile se ancora scomoda
+1. Sistemare / bilanciare UX mappa su mobile e dimensione carte in mano (ancora scomode)
 2. Completare timing trappole e casi limite
 3. Completare effetti carte ancora “a metà”
 4. Circoli Rituali / zone: verificare che gli eventi partano sempre in partita
@@ -149,6 +164,8 @@ DECISIONI DI DESIGN GIÀ PRESE (non rinegoziare senza FRA)
 - Quando umano diventa Caduto: modal “Hai perso” immediato, mappa congelata
   alla visione del momento della sconfitta, niente spettatore, partita chiusa
   se non restano umani.
+- Primo movimento di ogni creatura per turno è gratuito
+- Regola Avvizzito come descritta sopra
 
 
 ================================================================================
@@ -162,13 +179,23 @@ battle4penumbra/
   js/map.js       → canvas mappa
   js/app.js       → UI, draft, cimitero, dettagli
 consegne/
-  001 … 011/      → solo file da caricare di quella tornata
+  001 … 012/      → solo file da caricare di quella tornata
 situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 
 
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+012 – Nuove regole + fix UX:
+      - Primo movimento di ogni creatura per turno è gratuito
+      - Sistema Avvizzito (entra su “?”, attacca; Mostrissimi entrano avvizziti; si sveglia a inizio turno)
+      - Fix: click in modalità Muovi non riapre più l’anteprima
+      - Dopo “Guarda la mappa” si possono cliccare le creature visibili per vedere i dettagli
+      - Zoom minimo abbassato a 0.25
+      - Visivo avvizzita: cerchio grigio + “Z”
+      File modificati: js/game.js, js/app.js, js/map.js
+
+
 011 – Quando l’umano diventa Caduto:
       - Modal immediato “Hai perso” con testo chiaro
       - Snapshot della fog of war (frozenVisibility) al momento esatto della sconfitta

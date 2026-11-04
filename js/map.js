@@ -248,11 +248,25 @@ const MapRenderer = {
     // Circle
     ctx.beginPath();
     ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    ctx.fillStyle = owner.isHuman ? "#FFD54F" : "#42A5F5";
+    if (unit.isWithered) {
+      ctx.fillStyle = "#78909C"; // grigio per avvizzita
+      ctx.strokeStyle = "#546E7A";
+    } else {
+      ctx.fillStyle = owner.isHuman ? "#FFD54F" : "#42A5F5";
+      ctx.strokeStyle = owner.isHuman ? "#FF8F00" : "#1565C0";
+    }
     ctx.fill();
-    ctx.strokeStyle = owner.isHuman ? "#FF8F00" : "#1565C0";
     ctx.lineWidth = 2;
     ctx.stroke();
+
+    // Simbolo avvizzita
+    if (unit.isWithered) {
+      ctx.fillStyle = "#FFCCBC";
+      ctx.font = `bold ${Math.max(10, 12 * this.scale)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Z", cx, cy);
+    }
 
     // Artefatto: corona dorata sopra
     if (owner.artifactAttachedTo === unit.instanceId || unit.hasArtifact || unit.type === "artefatto") {
@@ -352,7 +366,9 @@ const MapRenderer = {
     });
 
     c.addEventListener("click", e => {
-      if (!this.game || this.game.phase !== "playing") return;
+      if (!this.game) return;
+      // Permetti click in playing e in ended (per guardare dettagli dopo sconfitta)
+      if (this.game.phase !== "playing" && this.game.phase !== "ended") return;
       const rect = c.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
@@ -360,40 +376,56 @@ const MapRenderer = {
 
       if (!CELL_TYPE.has(`${q},${r}`)) return;
 
-      // Play card mode
-      if (this.game.playMode && this.game.selectedCard) {
-        const ok = this.game.playCardOnHex(q, r);
-        if (ok && window.onGameUpdate) window.onGameUpdate();
-        this.render();
-        return;
-      }
-
-      // Move / Attack mode
-      if (this.game.moveMode && this.game.selectedUnit) {
-        const ok = this.game.tryMoveOrAttack(q, r);
-        if (ok && window.onGameUpdate) window.onGameUpdate();
-        this.render();
-        return;
-      }
-
-      // Target mode (maledizioni)
-      if (this.game.targetMode) {
-        const anyUnit = this.game.getUnitAt(q, r);
-        if (anyUnit) {
-          this.game.selectTargetUnit(anyUnit);
-          if (window.onGameUpdate) window.onGameUpdate();
+      // Azioni di gioco solo in fase playing
+      if (this.game.phase === "playing") {
+        // Play card mode
+        if (this.game.playMode && this.game.selectedCard) {
+          const ok = this.game.playCardOnHex(q, r);
+          if (ok && window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
         }
-      }
 
-      // Attach Artefatto a creatura propria
-      if (this.game.attachMode && this.game.selectedCard && this.game.selectedCard.type === "artefatto") {
+        // Move / Attack mode – priorità assoluta, non deve mai aprire l'anteprima
+        if (this.game.moveMode && this.game.selectedUnit) {
+          this.game.tryMoveOrAttack(q, r);
+          if (window.onGameUpdate) window.onGameUpdate();
+          this.render();
+          return; // sempre return, anche se il movimento fallisce
+        }
+
+        // Target mode (maledizioni)
+        if (this.game.targetMode) {
+          const anyUnit = this.game.getUnitAt(q, r);
+          if (anyUnit) {
+            this.game.selectTargetUnit(anyUnit);
+            if (window.onGameUpdate) window.onGameUpdate();
+            this.render();
+            return;
+          }
+        }
+
+        // Attach Artefatto a creatura propria
+        if (this.game.attachMode && this.game.selectedCard && this.game.selectedCard.type === "artefatto") {
+          const human = this.game.entities.find(e => e.isHuman);
+          if (human) {
+            const unit = human.field.find(u => u.q === q && u.r === r);
+            if (unit) {
+              this.game.attachArtifactToUnit(unit.instanceId);
+              if (window.onGameUpdate) window.onGameUpdate();
+              this.render();
+              return;
+            }
+          }
+        }
+
+        // Select own unit (solo se non siamo in nessuna modalità azione)
         const human = this.game.entities.find(e => e.isHuman);
-        if (human) {
+        if (human && this.game.currentEntity.isHuman && !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode) {
           const unit = human.field.find(u => u.q === q && u.r === r);
           if (unit) {
-            this.game.attachArtifactToUnit(unit.instanceId);
+            this.game.selectUnit(unit.instanceId);
+            if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
             if (window.onGameUpdate) window.onGameUpdate();
             this.render();
             return;
@@ -401,16 +433,16 @@ const MapRenderer = {
         }
       }
 
-      // Select own unit
-      const human = this.game.entities.find(e => e.isHuman);
-      if (human && this.game.currentEntity.isHuman) {
-        const unit = human.field.find(u => u.q === q && u.r === r);
-        if (unit) {
-          this.game.selectUnit(unit.instanceId);
-          // Mostra dettaglio full screen
-          if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
-          if (window.onGameUpdate) window.onGameUpdate();
-          this.render();
+      // In fase ended (dopo "Guarda la mappa") o playing: permetti di vedere dettagli di qualsiasi creatura visibile
+      {
+        const anyUnit = this.game.getUnitAt(q, r);
+        if (anyUnit) {
+          const human = this.game.entities.find(e => e.isHuman);
+          const isOwn = human && anyUnit.ownerId === human.id;
+          const visible = isOwn || (human ? this.game.isVisibleTo(human, anyUnit.q, anyUnit.r) : true);
+          if (visible && typeof showCardDetail === "function") {
+            showCardDetail(anyUnit, { fromField: true, readOnly: true });
+          }
         }
       }
     });
@@ -418,7 +450,7 @@ const MapRenderer = {
     c.addEventListener("wheel", e => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      this.scale = Math.min(Math.max(this.scale * delta, 0.4), 2.8);
+      this.scale = Math.min(Math.max(this.scale * delta, 0.25), 3.0);
       this.render();
     }, { passive: false });
   }

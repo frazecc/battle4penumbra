@@ -314,6 +314,9 @@ function showCardDetail(card, opts) {
   const fromHand = !!opts.fromHand;
   const t = (card.type || "").toLowerCase();
 
+  const witheredStr = (isFieldUnit && card.isWithered) ? "<p style=\"color:#FF8A65;\"><strong>Stato:</strong> AVVIZZITA (non può muoversi né attaccare)</p>" : "";
+  const movedStr = (isFieldUnit && card.movedThisTurn) ? "<p><strong>Movimento:</strong> ha già mosso questo turno</p>" : (isFieldUnit ? "<p><strong>Movimento:</strong> primo passo ancora gratuito</p>" : "");
+
   bodyEl.innerHTML =
     "<p><strong>Tipo:</strong> " + (card.type || "-") + "</p>" +
     "<p><strong>Colore:</strong> " + (card.color || "-") + "</p>" +
@@ -321,7 +324,9 @@ function showCardDetail(card, opts) {
     (atk !== null ? "<p><strong>ATK / PV:</strong> " + atk + " / " + (hp||0) + (card.shields ? " · Scudi " + card.shields : "") + "</p>" : "") +
     (card.sacrifice ? "<p><strong>Sacrifici:</strong> " + card.sacrifice + "</p>" : "") +
     (isFieldUnit ? "<p><strong>Posizione:</strong> (" + card.q + "," + card.r + ")</p>" : "") +
-    "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + "</p>";
+    witheredStr +
+    movedStr +
+    "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + (card.type === "mostrissimo" ? " <em>(Entra in campo avvizzito)</em>" : "") + "</p>";
 
   let actions = document.getElementById("card-detail-actions");
   if (!actions) {
@@ -332,7 +337,7 @@ function showCardDetail(card, opts) {
   }
   actions.innerHTML = "";
 
-  const canAct = !!(game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing");
+  const canAct = !!(game && game.currentEntity && game.currentEntity.isHuman && game.phase === "playing" && !opts.readOnly);
 
   function addBtn(label, primary, fn, disabled, title) {
     const b = document.createElement("button");
@@ -355,7 +360,10 @@ function showCardDetail(card, opts) {
     // Spiegazione se non può muoversi
     let moveBlocked = false;
     let moveReason = "";
-    if (game && typeof game.isCellDiscovered === "function") {
+    if (card.isWithered) {
+      moveBlocked = true;
+      moveReason = "Creatura avvizzita: non può muoversi né attaccare (si sveglia a inizio del tuo prossimo turno).";
+    } else if (game && typeof game.isCellDiscovered === "function") {
       if (!game.isCellDiscovered(card.q, card.r, game.currentEntity)) {
         moveBlocked = true;
         moveReason = "Cella non ancora scoperta: non puoi muoverti oltre in questo turno (si scopre a fine turno).";

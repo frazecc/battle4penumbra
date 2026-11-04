@@ -1,0 +1,289 @@
+// =====================================================
+// MAP RENDERER + INTERACTION (Fog of War, click, etc.)
+// =====================================================
+
+const MapRenderer = {
+  canvas: null,
+  ctx: null,
+  size: 22,
+  scale: 1,
+  offsetX: 0,
+  offsetY: 0,
+  isDragging: false,
+  lastX: 0,
+  lastY: 0,
+  game: null,
+  hoverHex: null,
+
+  init(canvasId, gameState) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext("2d");
+    this.game = gameState;
+    this._bindEvents();
+    this.center();
+    this.render();
+  },
+
+  setGame(gameState) {
+    this.game = gameState;
+    this.render();
+  },
+
+  axialToPixel(q, r) {
+    const x = this.size * (Math.sqrt(3) * q + Math.sqrt(3) / 2 * r);
+    const y = this.size * (3 / 2 * r);
+    return { x, y };
+  },
+
+  pixelToAxial(px, py) {
+    // Inverse (approximate)
+    const x = (px - this.offsetX) / this.scale;
+    const y = (py - this.offsetY) / this.scale;
+    const q = (Math.sqrt(3)/3 * x - 1/3 * y) / this.size;
+    const r = (2/3 * y) / this.size;
+    return this._hexRound(q, r);
+  },
+
+  _hexRound(q, r) {
+    let s = -q - r;
+    let rq = Math.round(q);
+    let rr = Math.round(r);
+    let rs = Math.round(s);
+    const qDiff = Math.abs(rq - q);
+    const rDiff = Math.abs(rr - r);
+    const sDiff = Math.abs(rs - s);
+    if (qDiff > rDiff && qDiff > sDiff) rq = -rr - rs;
+    else if (rDiff > sDiff) rr = -rq - rs;
+    return { q: rq, r: rr };
+  },
+
+  center() {
+    const rect = this.canvas.getBoundingClientRect();
+    this.offsetX = rect.width / 2;
+    this.offsetY = rect.height / 2;
+    this.scale = 1;
+    this.size = 22;
+  },
+
+  render() {
+    if (!this.canvas || !this.ctx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = this.canvas.getBoundingClientRect();
+    this.canvas.width = rect.width * dpr;
+    this.canvas.height = rect.height * dpr;
+    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const ctx = this.ctx;
+    ctx.fillStyle = "#0D1B2A";
+    ctx.fillRect(0, 0, rect.width, rect.height);
+
+    const human = this.game?.entities.find(e => e.isHuman);
+
+    // Draw all known cells
+    for (const [key, type] of CELL_TYPE) {
+      const [q, r] = key.split(",").map(Number);
+      const visible = human ? this.game.isVisibleTo(human, q, r) : true;
+      this._drawHex(q, r, type, visible);
+    }
+
+    // Draw units
+    if (this.game) {
+      for (const ent of this.game.entities) {
+        for (const unit of ent.field) {
+          const visible = human ? this.game.isVisibleTo(human, unit.q, unit.r) : true;
+          if (visible) this._drawUnit(unit, ent);
+        }
+      }
+    }
+
+    // Highlight selected
+    if (this.game?.selectedUnit) {
+      this._highlightHex(this.game.selectedUnit.q, this.game.selectedUnit.r, "#FFD54F");
+    }
+    if (this.hoverHex) {
+      this._highlightHex(this.hoverHex.q, this.hoverHex.r, "#4FC3F7");
+    }
+  },
+
+  _drawHex(q, r, type, visible) {
+    const { x, y } = this.axialToPixel(q, r);
+    const cx = x * this.scale + this.offsetX;
+    const cy = y * this.scale + this.offsetY;
+    const s = this.size * this.scale;
+
+    const verts = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 180 * (60 * i - 30);
+      verts.push({
+        x: cx + s * Math.cos(angle),
+        y: cy + s * Math.sin(angle)
+      });
+    }
+
+    let fill, stroke;
+    if (!visible) {
+      fill = "#15202B";
+      stroke = "#1A2A3A";
+    } else if (type === "mountain") {
+      fill = "#5D4037"; stroke = "#3E2723";
+    } else if (type === "plain") {
+      fill = "#7CB342"; stroke = "#558B2F";
+    } else if (type === "water") {
+      fill = "#29B6F6"; stroke = "#0277BD";
+    } else if (type === "city") {
+      fill = "#FFD54F"; stroke = "#FF8F00";
+    } else {
+      fill = "#37474F"; stroke = "#263238";
+    }
+
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(verts[0].x, verts[0].y);
+    for (let i = 1; i < 6; i++) ctx.lineTo(verts[i].x, verts[i].y);
+    ctx.closePath();
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = Math.max(0.7, 1 * this.scale);
+    ctx.stroke();
+
+    // Labels for temples / city when visible
+    if (visible) {
+      if (type === "city") {
+        ctx.fillStyle = "#D32F2F";
+        ctx.font = `bold ${Math.max(12, 16 * this.scale)}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("★", cx, cy);
+      } else if (type === "water") {
+        const t = TEMPLES[`${q},${r}`];
+        if (t) {
+          ctx.fillStyle = "#0D1B2A";
+          ctx.font = `bold ${Math.max(8, 10 * this.scale)}px Arial`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(t.label, cx, cy);
+        }
+      }
+    }
+  },
+
+  _drawUnit(unit, owner) {
+    const { x, y } = this.axialToPixel(unit.q, unit.r);
+    const cx = x * this.scale + this.offsetX;
+    const cy = y * this.scale + this.offsetY;
+    const radius = this.size * this.scale * 0.45;
+
+    const ctx = this.ctx;
+    // Circle
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = owner.isHuman ? "#FFD54F" : "#42A5F5";
+    ctx.fill();
+    ctx.strokeStyle = owner.isHuman ? "#FF8F00" : "#1565C0";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Stats
+    ctx.fillStyle = "#0D1B2A";
+    ctx.font = `bold ${Math.max(9, 11 * this.scale)}px Arial`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${unit.atk || 0}/${unit.currentHp || unit.hp || 0}`, cx, cy);
+  },
+
+  _highlightHex(q, r, color) {
+    const { x, y } = this.axialToPixel(q, r);
+    const cx = x * this.scale + this.offsetX;
+    const cy = y * this.scale + this.offsetY;
+    const s = this.size * this.scale * 1.05;
+
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 180 * (60 * i - 30);
+      const vx = cx + s * Math.cos(angle);
+      const vy = cy + s * Math.sin(angle);
+      if (i === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+    ctx.closePath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  },
+
+  _bindEvents() {
+    const c = this.canvas;
+
+    c.addEventListener("mousedown", e => {
+      this.isDragging = true;
+      this.lastX = e.clientX;
+      this.lastY = e.clientY;
+    });
+
+    window.addEventListener("mouseup", () => this.isDragging = false);
+
+    c.addEventListener("mousemove", e => {
+      if (this.isDragging) {
+        this.offsetX += e.clientX - this.lastX;
+        this.offsetY += e.clientY - this.lastY;
+        this.lastX = e.clientX;
+        this.lastY = e.clientY;
+        this.render();
+        return;
+      }
+      // Hover
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      this.hoverHex = this.pixelToAxial(mx, my);
+      this.render();
+    });
+
+    c.addEventListener("click", e => {
+      if (!this.game || this.game.phase !== "playing") return;
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const { q, r } = this.pixelToAxial(mx, my);
+
+      if (!CELL_TYPE.has(`${q},${r}`)) return;
+
+      // Play card mode
+      if (this.game.playMode && this.game.selectedCard) {
+        const ok = this.game.playCardOnHex(q, r);
+        if (ok && window.onGameUpdate) window.onGameUpdate();
+        this.render();
+        return;
+      }
+
+      // Move / Attack mode
+      if (this.game.moveMode && this.game.selectedUnit) {
+        const ok = this.game.tryMoveOrAttack(q, r);
+        if (ok && window.onGameUpdate) window.onGameUpdate();
+        this.render();
+        return;
+      }
+
+      // Select own unit
+      const human = this.game.entities.find(e => e.isHuman);
+      if (human && this.game.currentEntity.isHuman) {
+        const unit = human.field.find(u => u.q === q && u.r === r);
+        if (unit) {
+          this.game.selectUnit(unit.instanceId);
+          if (window.onGameUpdate) window.onGameUpdate();
+          this.render();
+        }
+      }
+    });
+
+    c.addEventListener("wheel", e => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      this.scale = Math.min(Math.max(this.scale * delta, 0.4), 2.8);
+      this.render();
+    }, { passive: false });
+  }
+};

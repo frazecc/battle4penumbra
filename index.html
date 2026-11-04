@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Battle for Penumbra</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- AUTH -->
+  <div id="screen-auth" class="screen active">
+    <div class="auth-card">
+      <h1>⚔️ Battle for Penumbra</h1>
+      <p class="subtitle">Accedi o registrati per giocare</p>
+      <div id="auth-error" class="auth-error"></div>
+      <div id="session-confirm" class="hidden">
+        <p style="text-align:center;margin-bottom:20px;">Sei ancora <strong id="session-username"></strong>?</p>
+        <div style="display:flex;gap:12px;">
+          <button id="btn-sono-io" class="btn btn-primary" style="flex:1">Sono io</button>
+          <button id="btn-non-sono-io" class="btn" style="flex:1">Non sono io</button>
+        </div>
+      </div>
+      <div id="auth-forms">
+        <div class="auth-tabs">
+          <button id="btn-show-login" class="active">Accedi</button>
+          <button id="btn-show-register">Registrati</button>
+        </div>
+        <form id="form-login">
+          <div class="form-group"><label>Username</label><input type="text" id="login-username" required autocomplete="username" /></div>
+          <div class="form-group"><label>Password</label><input type="password" id="login-password" required autocomplete="current-password" /></div>
+          <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">Entra</button>
+        </form>
+        <form id="form-register" class="hidden">
+          <div class="form-group"><label>Username</label><input type="text" id="reg-username" required minlength="3" autocomplete="username" /></div>
+          <div class="form-group"><label>Password</label><input type="password" id="reg-password" required minlength="4" autocomplete="new-password" /></div>
+          <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px;">Crea account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOME -->
+  <div id="screen-home" class="screen">
+    <header>
+      <div class="logo">⚔️ Battle for Penumbra</div>
+      <div class="user-info">
+        <span>Ciao, <span class="username" id="display-username">-</span></span>
+        <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
+      </div>
+    </header>
+    <div class="home-content">
+      <h1 class="home-title">Benvenuto</h1>
+      <div class="home-grid">
+        <div class="home-card" id="btn-partita-base">
+          <div class="icon">🗺️</div>
+          <h3>Partita Base</h3>
+          <p>PvE contro IA – Draft + Combattimento</p>
+        </div>
+        <div class="home-card disabled"><div class="icon">⚔️</div><h3>1v1</h3><p>Prossimamente</p></div>
+        <div class="home-card disabled"><div class="icon">🏆</div><h3>Classifica</h3><p>Prossimamente</p></div>
+        <div class="home-card disabled"><div class="icon">📖</div><h3>Codex</h3><p>Carte & Regole</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETUP -->
+  <div id="screen-setup" class="screen">
+    <div class="setup-card">
+      <h2>Impostazioni Partita Base</h2>
+      <p class="desc">Scegli quanti avversari IA e quanti templi già caduti</p>
+      <div class="setup-row">
+        <label>Giocatori IA</label>
+        <div class="setup-controls">
+          <button id="ai-minus">−</button>
+          <span class="value" id="val-ai">1</span>
+          <button id="ai-plus">+</button>
+        </div>
+      </div>
+      <div class="setup-row">
+        <label>Templi Caduti</label>
+        <div class="setup-controls">
+          <button id="fallen-minus">−</button>
+          <span class="value" id="val-fallen">0</span>
+          <button id="fallen-plus">+</button>
+        </div>
+      </div>
+      <div class="setup-summary" id="setup-summary">1 Giocatore Umano + 1 IA + 0 Templi Caduti</div>
+      <div class="setup-actions">
+        <button id="btn-back-home" class="btn">Indietro</button>
+        <button id="btn-start-draft" class="btn btn-primary">Inizia Draft</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAFT -->
+  <div id="screen-draft" class="screen">
+    <div class="draft-header">
+      <h2>Fase di Draft</h2>
+      <div class="draft-status" id="draft-status">Preparazione...</div>
+      <div class="draft-turn-info" id="draft-turn-info"></div>
+    </div>
+    <div class="packs-container" id="packs-container"></div>
+    <div class="player-picks" id="player-picks"></div>
+  </div>
+
+  <!-- GAME -->
+  <div id="screen-game" class="screen">
+    <div class="game-layout">
+      <div class="game-sidebar">
+        <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700;color:var(--accent);">Entità</div>
+        <div id="entities-panel"></div>
+        <div style="padding:12px;border-top:1px solid var(--border);margin-top:auto;">
+          <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:8px;">Legenda</div>
+          <div style="font-size:0.8rem;line-height:1.6;">
+            <div>🟡 Tua unità</div>
+            <div>🔵 Unità IA</div>
+            <div>⬛ Nebbia di Guerra</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="game-center">
+        <div class="game-topbar">
+          <div class="turn-info" id="turn-info">Turno -</div>
+          <div class="mana-display">
+            <span id="mana-info">Mana: -</span>
+            <button id="btn-cancel-action" class="btn" style="padding:6px 12px;display:none;">Annulla</button>
+            <button id="btn-end-turn" class="btn" style="padding:6px 16px;">Termina Turno</button>
+          </div>
+        </div>
+        <canvas id="gameCanvas" style="flex:1;width:100%;"></canvas>
+        <div class="game-hand" id="game-hand"></div>
+      </div>
+
+      <div class="game-sidebar right">
+        <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700;color:var(--accent);">Log di Gioco</div>
+        <div class="log-panel" id="game-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/map.js"></script>
+  <script src="js/app.js"></script>
+<div id="endgame-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:999;">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:40px;text-align:center;max-width:420px;width:90%;">
+      <h2 id="endgame-title" style="color:var(--accent);font-size:1.8rem;margin-bottom:12px;">Fine Partita</h2>
+      <p id="endgame-msg" style="color:var(--text);margin-bottom:24px;font-size:1.1rem;"></p>
+      <button id="btn-back-to-home" class="btn btn-primary" style="width:100%;">Torna alla Home</button>
+    </div>
+  </div>
+</body>
+</html>

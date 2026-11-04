@@ -562,6 +562,16 @@ window.onGameEnd = function(g) {
   modal.classList.remove("hidden");
   modal.style.display = "flex";
 
+  // Disabilita subito qualsiasi interazione di gioco
+  if (g) {
+    g.selectedCard = null;
+    g.selectedUnit = null;
+    g.moveMode = false;
+    g.playMode = false;
+    g.attachMode = false;
+    g.targetMode = null;
+  }
+
   if (g.winner) {
     if (g.winner.isHuman) {
       title.textContent = "Vittoria!";
@@ -573,8 +583,10 @@ window.onGameEnd = function(g) {
       msg.textContent = (g.winner.name || "Un avversario") + " ha vinto la partita." + (g.loseReason ? " (" + g.loseReason + ")" : "");
     }
   } else {
-    title.textContent = "Fine Partita";
-    msg.textContent = g.loseReason || "La partita è terminata.";
+    // Caso tipico: l'umano è diventato Caduto
+    title.textContent = "Hai perso";
+    title.style.color = "var(--danger)";
+    msg.textContent = g.loseReason || "Il tuo Artefatto non era più sul campo a fine turno.";
   }
 
   // Collega i bottoni ORA (quando il modal è visibile) – evita listener persi
@@ -594,6 +606,7 @@ window.onGameEnd = function(g) {
     btnMap.onclick = function() {
       modal.classList.add("hidden");
       modal.style.display = "none";
+      // Ridisegna con la fog congelata (frozenVisibility già impostata in game.js)
       if (typeof renderGameState === "function") renderGameState();
       if (typeof MapRenderer !== "undefined") MapRenderer.render();
       let bar = document.getElementById("postgame-bar");
@@ -609,7 +622,7 @@ window.onGameEnd = function(g) {
           showScreen("home");
         };
       }
-      if (game) game.addLog("Scorri il log a destra per capire cosa è successo.");
+      if (game) game.addLog("Mappa congelata al momento della sconfitta. Nessuna informazione extra.");
       if (typeof renderGameState === "function") renderGameState();
     };
   }

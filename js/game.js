@@ -77,6 +77,7 @@ class GameState {
     this.mostrissimiPool = [];
     this.globalClearFogUntil = 0;
     this.flippedCells = new Set();
+    this.frozenVisibility = null; // Set di "q,r" visibili al momento della sconfitta umana (per Guarda mappa)
 
     this._initEntities();
     this._assignTemples();
@@ -184,6 +185,10 @@ class GameState {
   }
 
   isVisibleTo(entity, q, r) {
+    // Se la partita è finita per sconfitta umana, usa lo snapshot congelato
+    if (this.frozenVisibility && entity && entity.isHuman) {
+      return this.frozenVisibility.has(q + "," + r);
+    }
     if (entity.isFallen) return false;
     // Clear fog globale / personale (Mostrissimi)
     if (this.globalClearFogUntil >= this.turnNumber) return true;
@@ -1003,10 +1008,34 @@ class GameState {
     }
     if (!current.isFallen) {
       if (!current.hasArtifactOnField()) {
+        // Snapshot della visione PRIMA di segnare caduto (serve per "Guarda la mappa")
+        if (current.isHuman) {
+          this.frozenVisibility = new Set();
+          for (const [key, type] of CELL_TYPE) {
+            const [q, r] = key.split(",").map(Number);
+            if (type === "mountain" || this.isVisibleTo(current, q, r)) {
+              this.frozenVisibility.add(key);
+            }
+          }
+        }
+
         current.isFallen = true;
         current.hand = []; // caduto: niente carte
         this.loseReason = current.name + " ha perso: Artefatto non presente sul campo a fine turno";
         this.addLog("💀 " + current.name + " decade! (Artefatto assente sul campo)", true);
+
+        // Se è l'umano a decadere e non ci sono più umani vivi → partita chiusa subito
+        if (current.isHuman) {
+          const stillHumans = this.entities.some(e => e.isHuman && !e.isFallen);
+          if (!stillHumans) {
+            this.winner = null;
+            this.phase = "ended";
+            if (typeof window !== "undefined" && window.onGameEnd) {
+              window.onGameEnd(this);
+            }
+            return; // non far giocare le IA
+          }
+        }
       }
     }
     this._checkWin();

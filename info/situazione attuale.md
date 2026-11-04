@@ -1,7 +1,7 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE
 File: situazione-attuale.txt
-Ultimo aggiornamento: 4 Novembre 2026 – consegna 010
+Ultimo aggiornamento: 4 Novembre 2026 – consegna 011
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA PER OGNI CHAT / IA CHE LAVORA SUL PROGETTO
@@ -88,6 +88,8 @@ CADUTI
 - Niente carte in mano, non possono vincere
 - Creature restano; a inizio turno token sul tempio se libero
 - IA caduta: insegue un nemico avvistato, altrimenti passo casuale
+- Umano caduto: modal immediato “Hai perso” + Guarda mappa / Torna Home.
+  Se non ci sono più umani vivi la partita si chiude subito (le IA non giocano oltre).
 
 UI
 - Mappa con auto-fit allo schermo (PC e mobile, migliorabile)
@@ -96,6 +98,8 @@ UI
 - Cimitero privato (bottone nel pannello), carte cliccabili a dettaglio
 - Placeholder “Potere fazione (placeholder)” sotto ogni nome
 - Passive degli eventi elencate sotto il nome
+- Fine partita: “Guarda la mappa” mostra tutta l’interfaccia con fog of war
+  CONGELATA esattamente al momento della sconfitta (nessuna info extra)
 
 
 ================================================================================
@@ -142,6 +146,9 @@ DECISIONI DI DESIGN GIÀ PRESE (non rinegoziare senza FRA)
 - Token 1/1 inizio turno solo se tempio libero
 - Celle occupate sempre bloccate (anche alleate)
 - Consegne solo file modificati + situazione-attuale.txt in cartella numerata
+- Quando umano diventa Caduto: modal “Hai perso” immediato, mappa congelata
+  alla visione del momento della sconfitta, niente spettatore, partita chiusa
+  se non restano umani.
 
 
 ================================================================================
@@ -155,13 +162,22 @@ battle4penumbra/
   js/map.js       → canvas mappa
   js/app.js       → UI, draft, cimitero, dettagli
 consegne/
-  001 … 006/      → solo file da caricare di quella tornata
+  001 … 011/      → solo file da caricare di quella tornata
 situazione-attuale.txt  → QUESTO FILE (copiarlo anche in ogni consegna)
 
 
 ================================================================================
 ULTIME CONSEGNE
 ================================================================================
+011 – Quando l’umano diventa Caduto:
+      - Modal immediato “Hai perso” con testo chiaro
+      - Snapshot della fog of war (frozenVisibility) al momento esatto della sconfitta
+      - “Guarda la mappa” mostra tutta l’UI con visione congelata (solo info che aveva)
+      - Se non restano umani la partita si chiude subito (le IA non giocano oltre)
+      - Interazioni di gioco disabilitate
+      File modificati: js/game.js, js/app.js
+
+
 010 – Fine partita: bottoni Home / Guarda mappa collegati con onclick al momento
       in cui si apre il modal (il addEventListener a caricamento pagina non partiva).
 

@@ -79,6 +79,8 @@ class GameState {
   }
 
   _initEntities() {
+    // Sempre 4 entità: 1 umano + numAI IA + numFallenTemples caduti
+    // numAI = 3 - numFallenTemples
     this.entities.push(new Entity("human", this.humanName, true));
     for (let i = 1; i <= this.numAI; i++) {
       this.entities.push(new Entity("ai" + i, "IA-" + i, false));
@@ -88,11 +90,7 @@ class GameState {
       fallen.isFallen = true;
       this.entities.push(fallen);
     }
-    while (this.entities.length < 4) {
-      const filler = new Entity("filler" + this.entities.length, "Entità " + (this.entities.length + 1), false);
-      filler.isFallen = true;
-      this.entities.push(filler);
-    }
+    // Sicurezza: esattamente 4
     this.entities = this.entities.slice(0, 4);
   }
 
@@ -165,73 +163,101 @@ class GameState {
 
   startDraft() {
     this.phase = "draft";
-    this.draft = { packs: this._generatePacks(), currentPick: 0, picks: {} };
+    // Draft a bustine: ogni giocatore attivo sceglie 3 bustine in totale (9 carte)
+    // Si vedono sempre 3 bustine; ne scegli 1 intera; poi si passa/refill
+    this.draft = {
+      packs: this._generatePacks(3),
+      currentPick: 0,
+      totalPicksNeeded: this.activePlayers.length * 3, // ogni attivo prende 3 bustine
+      picks: {},
+      pickerIndex: 0  // indice tra activePlayers
+    };
     this.activePlayers.forEach(e => this.draft.picks[e.id] = []);
-    this.addLog("Inizia la fase di Draft!", true);
+    // Primo picker casuale tra attivi
+    this.draft.pickerIndex = Math.floor(Math.random() * this.activePlayers.length);
+    this.addLog("Inizia la fase di Draft a bustine!", true);
   }
 
-  _generatePacks() {
-    const usedColors = [];
+  _generatePacks(count) {
     const packs = [];
-    for (let p = 0; p < 3; p++) {
-      let color;
-      do { color = COLORS[Math.floor(Math.random() * COLORS.length)]; }
-      while (usedColors.includes(color) && usedColors.length < 5);
-      usedColors.push(color);
+    for (let p = 0; p < count; p++) {
+      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
       const pool = ALL_CARDS.filter(c => c.color === color || color === "yellow");
       const cards = [];
       const poolCopy = [...pool];
       for (let i = 0; i < 3 && poolCopy.length; i++) {
         const idx = Math.floor(Math.random() * poolCopy.length);
-        cards.push({ ...poolCopy[idx], instanceId: poolCopy[idx].id + "_p" + p + "_" + i });
+        const base = poolCopy[idx];
+        cards.push({ ...base, instanceId: base.id + "_p" + Date.now() + "_" + p + "_" + i + "_" + Math.random().toString(36).slice(2,6) });
         poolCopy.splice(idx, 1);
       }
-      packs.push({ color, cards, taken: [false, false, false] });
+      packs.push({ color, cards, id: "pack_" + Date.now() + "_" + p });
     }
     return packs;
   }
 
   getDraftCurrentPicker() {
-    const order = [1, 0, 0, 1, 1, 0];
-    const step = this.draft.currentPick;
-    if (step >= 6) return null;
-    if (order[step] === 0) return this.entities.find(e => e.isHuman);
-    return this.activePlayers.find(e => !e.isHuman) || this.activePlayers[0];
+    if (!this.draft || this.draft.currentPick >= this.draft.totalPicksNeeded) return null;
+    const actives = this.activePlayers;
+    if (!actives.length) return null;
+    return actives[this.draft.pickerIndex % actives.length];
   }
 
-  draftPick(packIndex, cardIndex) {
+  // Scegli intera bustina (packIndex)
+  draftPickPack(packIndex) {
     const picker = this.getDraftCurrentPicker();
     if (!picker) return false;
+    if (packIndex < 0 || packIndex >= this.draft.packs.length) return false;
     const pack = this.draft.packs[packIndex];
-    if (!pack || pack.taken[cardIndex]) return false;
-    const card = pack.cards[cardIndex];
-    pack.taken[cardIndex] = true;
-    this.draft.picks[picker.id].push(card);
-    this.addLog(picker.name + " ha scelto: " + card.name);
+    // Tutte le 3 carte della bustina vanno al giocatore
+    pack.cards.forEach(card => {
+      this.draft.picks[picker.id].push(card);
+    });
+    this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color) + " (" + pack.cards.map(c => c.name).join(", ") + ")", true);
+    // Rimuovi la bustina scelta
+    this.draft.packs.splice(packIndex, 1);
     this.draft.currentPick++;
-    this._processAIDraftPicks();
-    if (this.draft.currentPick >= 6) this._finishDraft();
+    // Passa al prossimo giocatore
+    this.draft.pickerIndex = (this.draft.pickerIndex + 1) % this.activePlayers.length;
+    // Refill fino a 3 bustine se non abbiamo finito
+    if (this.draft.currentPick < this.draft.totalPicksNeeded) {
+      while (this.draft.packs.length < 3) {
+        const newPacks = this._generatePacks(1);
+        this.draft.packs.push(newPacks[0]);
+      }
+    }
+    // AI auto-pick
+    this._processAIDraftPacks();
+    if (this.draft.currentPick >= this.draft.totalPicksNeeded) this._finishDraft();
     return true;
   }
 
-  _processAIDraftPicks() {
-    while (this.draft.currentPick < 6) {
+  // Compatibilità vecchia API (non usata più)
+  draftPick(packIndex, cardIndex) {
+    return this.draftPickPack(packIndex);
+  }
+
+  _processAIDraftPacks() {
+    while (this.draft.currentPick < this.draft.totalPicksNeeded) {
       const picker = this.getDraftCurrentPicker();
       if (!picker || picker.isHuman) break;
-      let best = null, bestScore = -1, bestPack = -1, bestCard = -1;
+      // AI sceglie la bustina con score medio più alto
+      let bestIdx = 0, bestScore = -1;
       this.draft.packs.forEach((pack, pi) => {
-        pack.cards.forEach((card, ci) => {
-          if (pack.taken[ci]) return;
-          const score = (card.cost || 0) * 10 + (card.atk || 0) + (card.hp || 0) + Math.random();
-          if (score > bestScore) { bestScore = score; best = card; bestPack = pi; bestCard = ci; }
-        });
+        const score = pack.cards.reduce((s, c) => s + (c.cost || 0) * 10 + (c.atk || 0) + (c.hp || 0), 0) + Math.random();
+        if (score > bestScore) { bestScore = score; bestIdx = pi; }
       });
-      if (best) {
-        this.draft.packs[bestPack].taken[bestCard] = true;
-        this.draft.picks[picker.id].push(best);
-        this.addLog(picker.name + " ha scelto: " + best.name);
-      }
+      const pack = this.draft.packs[bestIdx];
+      pack.cards.forEach(card => this.draft.picks[picker.id].push(card));
+      this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color));
+      this.draft.packs.splice(bestIdx, 1);
       this.draft.currentPick++;
+      this.draft.pickerIndex = (this.draft.pickerIndex + 1) % this.activePlayers.length;
+      if (this.draft.currentPick < this.draft.totalPicksNeeded) {
+        while (this.draft.packs.length < 3) {
+          this.draft.packs.push(this._generatePacks(1)[0]);
+        }
+      }
     }
   }
 
@@ -258,6 +284,8 @@ class GameState {
     this.turnIndex = this.entities.indexOf(actives[this.firstPlayerIndex]);
     this.turnNumber = 1;
     this.currentEntity.startTurn();
+    // Token gratuito a tutte le entità (anche cadute) sul tempio
+    this.entities.forEach(e => this._spawnFreeToken(e));
     this.addLog("Inizia la partita! Primo: " + this.currentEntity.name, true);
   }
 
@@ -784,6 +812,27 @@ class GameState {
     }
   }
 
+
+  _spawnFreeToken(entity) {
+    if (!entity.templeKey) return;
+    const [tq, tr] = entity.templeKey.split(",").map(Number);
+    // Se il tempio è già occupato, non piazzare
+    if (this.getUnitAt(tq, tr)) return;
+    const token = {
+      ...FREE_TOKEN,
+      instanceId: "token_" + entity.id + "_" + this.turnNumber + "_" + Math.random().toString(36).slice(2, 6),
+      q: tq,
+      r: tr,
+      currentHp: 1,
+      shields: 0,
+      ownerId: entity.id,
+      permanentAtkBonus: 0
+    };
+    entity.field.push(token);
+    this._revealAround(entity, tq, tr, 2);
+    this.addLog(entity.name + " riceve Spirito del Tempio (1/1) sul tempio.");
+  }
+
   endTurn() {
     const current = this.currentEntity;
     this.addLog(current.name + " termina il turno.");
@@ -825,6 +874,7 @@ class GameState {
     this.turnNumber++;
     const nextE = this.currentEntity;
     nextE.startTurn();
+    this._spawnFreeToken(nextE);
     this.selectedCard = null;
     this.selectedUnit = null;
     this.moveMode = false;

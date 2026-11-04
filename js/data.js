@@ -156,6 +156,20 @@ const ALL_CARDS = [
 ];
 
 // Artefatto
+
+// Token gratuito inizio turno (1/1 sul tempio)
+const FREE_TOKEN = {
+  id: "token_free",
+  name: "Spirito del Tempio",
+  type: "mostro",
+  color: "yellow",
+  cost: 0,
+  atk: 1,
+  hp: 1,
+  effect: "Token gratuito ricevuto a inizio turno sul proprio Tempio.",
+  effectId: null
+};
+
 const ARTIFACT_CARD = {
   id: "artifact",
   name: "L'Artefatto",

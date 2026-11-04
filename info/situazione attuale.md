@@ -1,8 +1,8 @@
 ================================================================================
 BATTLE FOR PENUMBRA – SITUAZIONE ATTUALE DEL PROGETTO
-Data analisi: 4 Novembre 2026
+Data analisi: 4 Novembre 2026 (aggiornato dopo implementazione sistemi mancanti)
 Repository: https://github.com/frazecc/battle4penumbra
-StackBlitz: https://stackblitz.com/~/github.com/frazecc/battle4penumbra
+Cartella locale aggiornata: /home/workdir/artifacts/battle4penumbra/
 ================================================================================
 
 ISTRUZIONE OBBLIGATORIA:
@@ -12,222 +12,127 @@ questo file deve essere aggiornato ogni singola volta che un file viene modifica
 1. PANORAMICA GENERALE
 ================================================================================
 
-Il progetto è un MVP (Minimum Viable Product) funzionante di "Battle for Penumbra".
-Si tratta di un gioco di carte tattico browser-based con mappa esagonale, draft,
-combattimento e AI.
+Il progetto è un MVP avanzato di "Battle for Penumbra".
+Gioco di carte tattico browser-based con mappa esagonale, draft, combattimento,
+AI, effetti carte, trappole, Mostrissimi ed eventi di terreno.
 
-Stato complessivo: **MVP giocabile in PvE (Partita Base)** con molte feature del
-design document già implementate in forma semplificata, ma diverse meccaniche
-avanzate ancora assenti o incomplete.
+Stack:
+- Vanilla HTML + CSS + JavaScript
+- Vite
+- localStorage (auth)
+- Canvas 2D
 
-Stack tecnologico:
-- Vanilla HTML + CSS + JavaScript (nessun framework)
-- Vite come bundler/dev server
-- localStorage per autenticazione (pronto per upgrade a Supabase)
-- Canvas 2D per rendering mappa esagonale
-- Nessun backend server-side (tutto client-side)
-
-Struttura file principale:
-- index.html          → Schermate (auth, home, setup, draft, game)
-- css/style.css       → Tema scuro completo
-- js/auth.js          → Sistema login/registrazione/sessione
-- js/data.js          → Mappa (159 celle) + catalogo carte + costanti
-- js/game.js          → Motore di gioco completo (Entity, GameState, AI, combat)
-- js/map.js           → Renderer canvas + interazione (zoom, pan, click, fog)
-- js/app.js           → Orchestrazione UI e flussi
+File principali (versione aggiornata in artifacts/battle4penumbra/):
+- index.html
+- css/style.css
+- js/auth.js
+- js/data.js          ← AGGIORNATO (catalogo + Mostrissimi + effetti strutturati)
+- js/game.js          ← RISCRITTO (motore completo)
+- js/map.js           ← AGGIORNATO (scudi, anello Artefatto, targeting)
+- js/app.js           ← AGGIORNATO (popup trappole, pannello Mostrissimi)
 
 ================================================================================
-2. COSA È IMPLEMENTATO (STATO REALE)
+2. SISTEMI IMPLEMENTATI (STATO DOPO L'AGGIORNAMENTO)
 ================================================================================
 
-### 2.1 Autenticazione (auth.js) – COMPLETO
-- Registrazione e login con username/password
-- Persistenza su localStorage
-- Conferma sessione "Sono io / Non sono io" dopo 12 ore
-- Logout
-- Password in chiaro (nota: da hashare in produzione)
+### Completati / Funzionanti
+- Autenticazione (login, register, sessione "Sono io")
+- Setup partita (IA + Templi Caduti → sempre 4 entità)
+- Draft 3 pack × 3 carte, ordine 2-1-1-2-2-1
+- Mappa 159 celle esatta + fog of war raggio 2
+- Mana (+1 max + refill a inizio turno)
+- Artefatto + condizione di sconfitta a fine turno
+- Combattimento con **rimbalzo** (se non uccidi torni alla cella di partenza)
+- Scudi (visivi + funzionali)
+- Indicatore Artefatto (anello dorato sull'unità)
+- **Sistema effetti strutturati** (effectId) per:
+  - ETB dei Mostri
+  - Maledizioni con targeting (click su unità)
+  - Trappole reattive
+  - Mostrissimi
+- **Trappole**: restano in mano, si attivano con popup nel turno avversario
+  (trigger: on_attack, after_damage, on_death)
+- **Mostrissimi**: pool pubblica di 3, costi sacrificio diversi, evocabili
+  solo su Altare (0,0) o Templi, con sacrificio di permanenti
+- **Eventi di fine turno**: flipping cella + bonus/malus legati al terreno
+- AI migliorata (piazza Artefatto, evoca, lancia maledizioni, attacca, avanza)
+- Vittoria per ultimo giocatore rimasto
 
-### 2.2 Flusso UI (app.js + index.html) – COMPLETO per Partita Base
-- Schermata Auth
-- Homepage con 4 card (solo "Partita Base" attiva)
-- Setup partita: numero IA (1-3) + Templi Caduti (0-2)
-- Forzatura a 4 entità totali (riempie con filler fallen se necessario)
-- Schermata Draft interattiva
-- Schermata di gioco a 3 colonne (entità | canvas | log)
-- Modal di fine partita (vittoria/sconfitta)
-- Mana display, bottone Termina Turno, Annulla azione
-
-### 2.3 Mappa (data.js + map.js) – COMPLETA e FEDELE
-- 159 celle esatte secondo specifica:
-  - 70 montagne
-  - 84 pianure
-  - 4 templi (acqua) con etichette A/B/C/D
-  - 1 altare/città centrale (0,0) con stella
-- Geometria pointy-topped, coordinate assiali (q,r)
-- Formule di conversione pixel corrette
-- Colori esatti da specifica (#5D4037 mountain, #7CB342 plain, ecc.)
-- Sfondo #0D1B2A
-- Zoom (rotella) + pan (drag)
-- Hover highlight
-- Nebbia di guerra (visibilità raggio 2 dalle creature + tempio + explored)
-- Montagne invalicabili
-
-### 2.4 Draft (game.js) – IMPLEMENTATO
-- 3 pacchetti da 3 carte ciascuno
-- Colori diversi (evita ripetizioni quando possibile)
-- Ordine di scelta: [1, 0, 0, 1, 1, 0] dove 0=umano, 1=IA
-  (corrisponde a: IA → Umano → Umano → IA → IA → Umano)
-- AI sceglie in automatico con scoring semplice
-- Al termine: consegna Artefatto a ogni giocatore attivo
-- 6 pick totali → 9 carte draft + 1 Artefatto in mano
-
-### 2.5 Sistema Entità e Turni – IMPLEMENTATO
-- Sempre 4 entità
-- Mana: parte da 1/1, +1 max + refill a inizio turno
-- Turn order orario (skippa i fallen)
-- Primo giocatore casuale tra gli attivi
-- Condizione di sconfitta Artefatto: se a fine turno non è sul campo → isFallen = true
-- Vittoria: rimane un solo giocatore non-fallen
-
-### 2.6 Gioco di Carte e Campo – PARZIALE
-- Selezione carta dalla mano → click su esagono
-- Posizionamento Mostri e Artefatto (solo su celle non-montagna, non occupate, visibili)
-- Maledizioni: vengono pagate e vanno al cimitero (effetto NON risolto)
-- Trappole: presenti nel catalogo ma NON giocabili (nessun sistema di trigger/popup)
-- Movimento: 1 mana per passo adiacente
-- Combattimento:
-  - Se ATK ≥ PV → distrugge e occupa
-  - Altrimenti danno + contrattacco
-  - Supporto base scudi
-  - Se il permanente con Artefatto muore → Artefatto torna in mano con +3 costo
-
-### 2.7 AI (runAITurn) – LIVELLO B+ FUNZIONANTE
-Priorità:
-1. Piazza l’Artefatto se non è sul campo
-2. Evoca la creatura più costosa giocabile
-3. Attacca se vantaggioso
-4. Avanza verso le unità umane
-Poi termina automaticamente il turno.
-
-### 2.8 Catalogo Carte (data.js) – PARZIALE
-Presenti:
-- 15 Mostri (5 economici, 5 standard, 5 potenti)
-- 10 Maledizioni (5 costo 3 + 5 costo 5)
-- 5 Trappole costo 1
-- Artefatto speciale
-
-Assenti dal catalogo implementato:
-- Mostrissimi (pool pubblica)
-- Trappole di costo 4 e 6
-- Effetti reali delle carte (solo testo descrittivo, quasi nessun trigger eseguito)
-- Sistema di ETB / fine turno / trigger
+### Ancora assenti / da completare
+- Quest del Quest-Giver (3 indizi + condizione di vittoria alternativa)
+- Circoli Rituali come elementi di mappa distinti (attualmente si usano Templi/Altare)
+- Multiplayer umano reale
+- Classifica e Codex
+- Animazioni
+- Targeting più raffinato per effetti AoE e multi-target
+- Backend reale (tutto ancora client-side)
 
 ================================================================================
-3. COSA MANCA RISPETTO AL DESIGN DOCUMENT ORIGINALE
-================================================================================
-
-### 3.1 Sistemi completamente assenti
-- Mostrissimi e pool pubblica (3 slot, refill, sacrifici 0-6, posizione su Altare/Circolo)
-- Eventi di fine turno (flipping cella + bonus/malus colore)
-- Quest del Quest-Giver (3 indizi + condizioni di completamento)
-- Circoli Rituali
-- Sistema di Trappole (popup interattivo nel turno avversario)
-- Risoluzione effettiva degli effetti delle carte (ETB, maledizioni, ecc.)
-- Token di status/scudi visivi avanzati
-- Condizione di vittoria per completamento Quest
-- Multiplayer umano (1v1, 1v1v1, 1v1v1v1) – solo UI placeholder
-- Classifica
-- Codex
-
-### 3.2 Meccaniche incomplete o semplificate
-- Effetti carte: solo testo, quasi nessun codice che li applica
-- Nebbia di guerra: implementata, ma “explored” rimane permanente (non c’è unforget)
-- Movimento in terreno inesplorato: regola “non più di un passo” parzialmente rispettata
-- Cimitero privato + log pubblico: log c’è, cimitero esiste ma non consultabile
-- Artefatto: meccanica base ok, ma non si “lega” visualmente a un permanente in modo chiaro
-- Draft: ordine leggermente diverso dalla specifica testuale originale (ma funzionante)
-- Templi Caduti: esistono come entità fallen, ma non influenzano la mappa
-
-### 3.3 UI / UX mancanti
-- Visualizzazione scudi/token sulle unità
-- Indicatore chiaro di quale permanente ha l’Artefatto attaccato
-- Animazioni di combattimento / movimento
-- Popup per trappole
-- Schermata di selezione bersaglio per maledizioni
-- Codex e regole in-game
-
-================================================================================
-4. QUALITÀ DEL CODICE ATTUALE
-================================================================================
-
-Punti di forza:
-- Codice leggibile e ben commentato per sezioni
-- Separazione responsabilità (auth / data / game / map / app)
-- Mappa geometricamente corretta e fedele alla specifica
-- AI già in grado di giocare una partita completa
-- Condizione di sconfitta Artefatto già attiva e rigorosa
-- Fog of war funzionante
-
-Debolezze / debito tecnico:
-- Tutto client-side (facilmente barabile)
-- Password in chiaro
-- Quasi nessun effetto carta effettivamente eseguito
-- Nessun test automatico
-- AI ancora molto semplice (non usa maledizioni, non gestisce trappole)
-- Nessuna gestione di stack o priorità di effetti
-- game.js è già abbastanza lungo (~550 righe) e continuerà a crescere
-
-================================================================================
-5. ALLINEAMENTO CON IL DESIGN DOCUMENT (SINTESI)
+3. ALLINEAMENTO CON IL DESIGN DOCUMENT (AGGIORNATO)
 ================================================================================
 
 | Area                      | Allineamento | Note                                      |
 |---------------------------|--------------|-------------------------------------------|
-| Mappa 159 celle           | 100%         | Identica alla specifica                   |
-| Auth + sessione           | 95%          | Manca solo backend reale                  |
-| Draft 3 pack × 3          | 90%          | Ordine leggermente diverso ma ok          |
+| Mappa 159 celle           | 100%         | Identica                                  |
+| Auth + sessione           | 95%          | localStorage                              |
+| Draft                     | 95%          | Ordine corretto                           |
 | Mana e turni              | 95%          | Corretto                                  |
-| Artefatto + sconfitta     | 85%          | Funziona, manca visualizzazione legame    |
-| Combattimento base        | 80%          | Rimbalzo non implementato come da design  |
-| Nebbia di guerra          | 85%          | Funziona                                  |
-| Catalogo carte            | 40%          | Solo subset + nessun effetto attivo       |
-| Mostrissimi               | 0%           | Assenti                                   |
-| Eventi / Quest / Circoli  | 0%           | Assenti                                   |
-| Trappole interattive      | 0%           | Solo dati, nessun sistema                 |
+| Artefatto + sconfitta     | 95%          | Funziona + indicatore visivo              |
+| Combattimento + rimbalzo  | 95%          | Implementato secondo design               |
+| Nebbia di guerra          | 90%          | + clear fog da Mostrissimi                |
+| Effetti carte (ETB/curse) | 85%          | Maggior parte mappata e funzionante       |
+| Trappole interattive      | 80%          | Popup + trigger principali                |
+| Mostrissimi + pool        | 85%          | Pool, sacrifici, evocazione su Altare/Tempio |
+| Eventi di fine turno      | 70%          | Flipping + eventi terreno base            |
+| Quest                     | 0%           | Non ancora implementata                   |
 | Multiplayer umano         | 0%           | Solo placeholder UI                       |
 
 ================================================================================
-6. PRIORITÀ CONSIGLIATE PER LO SVILUPPO FUTURO
+4. COME USARE I NUOVI SISTEMI
 ================================================================================
 
-Fase A – Rendere le carte vive (alta priorità)
-1. Sistema di risoluzione effetti (ETB, maledizioni con targeting)
-2. Scudi e token visivi
-3. Trappole con popup nel turno avversario
-
-Fase B – Sistemi di mid-game
-4. Mostrissimi + pool pubblica + sacrifici
-5. Eventi di fine turno + flipping celle
-6. Quest
-
-Fase C – Completezza e multiplayer
-7. Condizione di vittoria Quest
-8. Multiplayer reale (WebSocket / Supabase Realtime)
-9. Codex e bilanciamento
+1. **Maledizioni con target**: seleziona la carta → clicca un'unità sulla mappa.
+2. **Trappole**: restano in mano. Quando scatta un trigger (attacco/danno/morte)
+   compare un popup per attivarle (se hai mana).
+3. **Mostrissimi**: pannello a sinistra. Clicca un Mostrissimo della pool →
+   clicca Altare o un Tempio. Servono N permanenti da sacrificare.
+4. **Eventi**: a fine turno, ogni cella occupata per la prima volta genera un evento.
+5. **Scudi**: badge blu sull'unità. Artefatto: anello dorato.
 
 ================================================================================
-7. NOTE TECNICHE UTILI
+5. FILE MODIFICATI IN QUESTA SESSIONE
 ================================================================================
 
-- La mappa è definita una sola volta in data.js (MOUNTAINS, PLAINS, TEMPLES, CITY)
-- CELL_TYPE è una Map usata sia dal motore che dal renderer
-- hexDistance è implementata correttamente
-- L’Artefatto è un’istanza speciale con currentCost che aumenta di +3 ogni volta che torna in mano
-- Gli effetti delle carte sono attualmente solo stringhe descrittive
-- L’AI non gioca mai maledizioni né trappole
+- js/data.js       → catalogo completo + MOSTRISSIMI + TERRAIN_EVENTS + effectId
+- js/game.js       → motore completo (effetti, trappole, mostrissimi, rimbalzo, eventi)
+- js/map.js        → scudi, anello Artefatto, click targeting
+- js/app.js        → popup trappole + pannello Mostrissimi
+- index.html       → modal trappole + contenitore Mostrissimi
+
+================================================================================
+6. PROSSIMI PASSI CONSIGLIATI
+================================================================================
+
+1. Testare una partita completa in StackBlitz / localmente
+2. Implementare il sistema Quest (3 indizi + vittoria alternativa)
+3. Raffinare targeting multiplo e AoE
+4. Aggiungere feedback visivo (flash danno, animazioni)
+5. Preparare deploy su Cloudflare Pages / GitHub Pages
 
 ================================================================================
 FINE ANALISI – SITUAZIONE ATTUALE
 Questo file è la fonte di verità sullo stato reale del codice.
 Deve essere aggiornato ogni volta che un file del progetto viene modificato.
 ================================================================================
+
+
+================================================================================
+AGGIORNAMENTO 4 Nov 2026 – 10:05 CET
+================================================================================
+Fix applicati:
+1. Setup: solo "Templi Caduti" (0/1/2). IA = 3 - caduti. Sempre 4 entità.
+2. Draft a bustine: vedi 3 bustine con le 3 carte visibili, scegli intera bustina,
+   si passa al prossimo, refill fino a 3 bustine. Ogni attivo prende 3 bustine (9 carte).
+3. A inizio turno (e a inizio partita) ogni entità riceve "Spirito del Tempio" 1/1
+   gratuito sul proprio tempio (se libero).
+4. Unità proprie sempre visibili sulla mappa; render aggiornato dopo evocazione.

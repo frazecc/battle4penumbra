@@ -91,7 +91,9 @@ const MapRenderer = {
     if (this.game) {
       for (const ent of this.game.entities) {
         for (const unit of ent.field) {
-          const visible = human ? this.game.isVisibleTo(human, unit.q, unit.r) : true;
+          // Sempre visibili le proprie unità; le altre solo se nella fog
+          const isOwn = human && unit.ownerId === human.id;
+          const visible = isOwn || (human ? this.game.isVisibleTo(human, unit.q, unit.r) : true);
           if (visible) this._drawUnit(unit, ent);
         }
       }

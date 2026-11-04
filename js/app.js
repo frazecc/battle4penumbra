@@ -104,27 +104,27 @@ document.getElementById("btn-partita-base")?.addEventListener("click", () => {
   updateSetupSummary();
 });
 
-let setupAI = 1, setupFallen = 0;
+let setupFallen = 0;
 
 function updateSetupSummary() {
+  const ai = 3 - setupFallen;
   const el = document.getElementById("setup-summary");
   if (el) {
-    el.innerHTML = "<strong>Composizione:</strong> 1 Umano + " + setupAI + " IA + " + setupFallen + " Templi Caduti<br><span style=\"color:var(--accent2)\">Totale entità: " + Math.min(1+setupAI+setupFallen, 4) + "</span>";
+    el.innerHTML = "<strong>Composizione:</strong> 1 Umano + " + ai + " IA + " + setupFallen + " Templi Caduti<br><span style=\"color:var(--accent2)\">Totale entità: 4 (sempre)</span>";
   }
-  document.getElementById("val-ai").textContent = setupAI;
-  document.getElementById("val-fallen").textContent = setupFallen;
+  const valFallen = document.getElementById("val-fallen");
+  if (valFallen) valFallen.textContent = setupFallen;
 }
 
-document.getElementById("ai-minus")?.addEventListener("click", () => { setupAI = Math.max(1, setupAI-1); updateSetupSummary(); });
-document.getElementById("ai-plus")?.addEventListener("click", () => { setupAI = Math.min(3, setupAI+1); updateSetupSummary(); });
 document.getElementById("fallen-minus")?.addEventListener("click", () => { setupFallen = Math.max(0, setupFallen-1); updateSetupSummary(); });
 document.getElementById("fallen-plus")?.addEventListener("click", () => { setupFallen = Math.min(2, setupFallen+1); updateSetupSummary(); });
 
 document.getElementById("btn-start-draft")?.addEventListener("click", () => {
   const user = getCurrentUser();
+  const numAI = 3 - setupFallen;
   game = new GameState({
     humanName: user?.username || "Giocatore",
-    numAI: setupAI,
+    numAI: numAI,
     numFallenTemples: setupFallen
   });
   game.startDraft();
@@ -141,59 +141,70 @@ function renderDraft() {
   const statusEl = document.getElementById("draft-status");
   const turnEl = document.getElementById("draft-turn-info");
 
-  if (!picker) {
+  if (!picker || game.draft.currentPick >= game.draft.totalPicksNeeded) {
     statusEl.textContent = "Draft completato!";
     turnEl.textContent = "Avvio partita...";
     return;
   }
 
   statusEl.textContent = "Scelta di: " + picker.name;
-  turnEl.textContent = "Pick " + (game.draft.currentPick + 1) + " di 6";
+  turnEl.textContent = "Bustina " + (game.draft.currentPick + 1) + " di " + game.draft.totalPicksNeeded +
+    " — Scegli una delle 3 bustine (prendi tutte e 3 le carte)";
 
   const container = document.getElementById("packs-container");
   container.innerHTML = "";
   game.draft.packs.forEach((pack, pi) => {
     const packEl = document.createElement("div");
     packEl.className = "pack" + (picker.isHuman ? " active-pack" : "");
-    packEl.innerHTML = "<div class=\"pack-header\"><span class=\"color-dot color-" + pack.color + "\"></span>Pacchetto " + (COLOR_NAMES[pack.color]||pack.color) + "</div><div class=\"pack-cards\"></div>";
-    const cardsEl = packEl.querySelector(".pack-cards");
-    pack.cards.forEach((card, ci) => {
-      const cardEl = document.createElement("div");
-      cardEl.className = "draft-card" + (pack.taken[ci] ? " taken" : "");
-      cardEl.innerHTML = "<div class=\"card-name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div><div class=\"card-meta\"><span>" + card.type + " • Costo " + card.cost + "</span><span>" + (card.atk!==undefined?card.atk+"/"+card.hp:"") + "</span></div>";
-      if (!pack.taken[ci] && picker.isHuman) {
-        cardEl.addEventListener("click", () => {
-          game.draftPick(pi, ci);
-          renderDraft();
-          if (game.phase === "playing") startGameUI();
-        });
-      }
-      cardsEl.appendChild(cardEl);
+    packEl.style.cursor = picker.isHuman ? "pointer" : "default";
+
+    let cardsHtml = "";
+    pack.cards.forEach((card) => {
+      const stats = (card.atk !== undefined) ? (card.atk + "/" + card.hp) : "";
+      cardsHtml += '<div class="draft-card">' +
+        '<div class="card-name"><span class="color-dot color-' + card.color + '"></span>' + card.name + '</div>' +
+        '<div class="card-meta"><span>' + card.type + ' • Costo ' + card.cost + '</span><span>' + stats + '</span></div>' +
+        '<div class="card-meta" style="font-size:0.72rem;margin-top:4px;">' + (card.effect || "").substring(0, 60) + '</div>' +
+        '</div>';
     });
+
+    packEl.innerHTML = '<div class="pack-header"><span class="color-dot color-' + pack.color + '"></span>Bustina ' +
+      (COLOR_NAMES[pack.color] || pack.color) + '</div><div class="pack-cards">' + cardsHtml + '</div>' +
+      (picker.isHuman ? '<button class="btn btn-primary" style="width:100%;margin-top:10px;">Scegli questa bustina</button>' : '');
+
+    if (picker.isHuman) {
+      packEl.addEventListener("click", () => {
+        game.draftPickPack(pi);
+        renderDraft();
+        if (game.phase === "playing") startGameUI();
+      });
+    }
     container.appendChild(packEl);
   });
 
+  // Picks so far
   const picksEl = document.getElementById("player-picks");
   picksEl.innerHTML = "";
   game.activePlayers.forEach(e => {
     const col = document.createElement("div");
     col.className = "pick-column " + (e.isHuman ? "human" : "ai");
-    col.innerHTML = "<h4>" + e.name + "</h4>";
-    (game.draft.picks[e.id]||[]).forEach(c => {
+    col.innerHTML = "<h4>" + e.name + " (" + (game.draft.picks[e.id] || []).length + " carte)</h4>";
+    (game.draft.picks[e.id] || []).forEach(c => {
       const p = document.createElement("div");
       p.className = "picked-card";
-      p.innerHTML = "<span class=\"color-dot color-" + c.color + "\"></span>" + c.name;
+      p.innerHTML = '<span class="color-dot color-' + c.color + '"></span>' + c.name;
       col.appendChild(p);
     });
     picksEl.appendChild(col);
   });
 
-  if (picker && !picker.isHuman && game.draft.currentPick < 6) {
+  // AI auto
+  if (picker && !picker.isHuman && game.draft.currentPick < game.draft.totalPicksNeeded) {
     setTimeout(() => {
-      game._processAIDraftPicks();
+      game._processAIDraftPacks();
       renderDraft();
       if (game.phase === "playing") startGameUI();
-    }, 600);
+    }, 700);
   }
 }
 

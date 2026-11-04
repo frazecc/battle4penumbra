@@ -534,3 +534,83 @@ body {
   }
   .game-sidebar { display: none; }
 }
+
+
+/* ========== BUSTINE SIGILLATE (solo colore) ========== */
+.pack-sealed {
+  min-width: 180px;
+  max-width: 220px;
+}
+.pack-sealed-inner {
+  border-radius: 12px;
+  padding: 36px 16px;
+  text-align: center;
+  border: 2px solid rgba(255,255,255,0.15);
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+.pack-sealed-label {
+  font-size: 0.75rem;
+  letter-spacing: 0.15em;
+  opacity: 0.7;
+  font-weight: 600;
+}
+.pack-sealed-color {
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.pack-sealed-hint {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+.color-bg-white { background: linear-gradient(145deg, #ECEFF1, #B0BEC5); color: #263238; }
+.color-bg-red { background: linear-gradient(145deg, #EF5350, #C62828); color: #fff; }
+.color-bg-black { background: linear-gradient(145deg, #616161, #212121); color: #fff; }
+.color-bg-blue { background: linear-gradient(145deg, #42A5F5, #1565C0); color: #fff; }
+.color-bg-green { background: linear-gradient(145deg, #66BB6A, #2E7D32); color: #fff; }
+.color-bg-yellow { background: linear-gradient(145deg, #FFEE58, #F9A825); color: #333; }
+
+/* ========== RESPONSIVE / VIEWPORT ========== */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+#screen-game {
+  height: 100dvh;
+  height: 100vh;
+}
+.game-layout {
+  height: 100%;
+  max-height: 100dvh;
+}
+#gameCanvas {
+  width: 100% !important;
+  height: 100% !important;
+  max-height: calc(100dvh - 180px);
+}
+.game-hand {
+  max-height: 140px;
+}
+@media (max-width: 1100px) {
+  .game-layout {
+    grid-template-columns: 200px 1fr 220px;
+  }
+}
+@media (max-width: 800px) {
+  .game-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+  .game-sidebar { max-height: 120px; }
+  .game-sidebar.right { display: none; }
+  #gameCanvas { max-height: calc(100dvh - 260px); }
+}
+@media (max-height: 700px) {
+  .game-hand { min-height: 90px; max-height: 100px; }
+  .hand-card { min-width: 110px; max-width: 130px; padding: 6px; }
+}

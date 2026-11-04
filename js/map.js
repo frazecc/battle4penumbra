@@ -188,7 +188,7 @@ const MapRenderer = {
     ctx.stroke();
 
     // Artifact indicator (gold ring)
-    if (owner.artifactAttachedTo === unit.instanceId || unit.type === "artefatto") {
+    if (owner.artifactAttachedTo === unit.instanceId || unit.hasArtifact || unit.type === "artefatto") {
       ctx.beginPath();
       ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
       ctx.strokeStyle = "#FFD700";
@@ -300,6 +300,20 @@ const MapRenderer = {
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
+        }
+      }
+
+      // Attach Artefatto a creatura propria
+      if (this.game.attachMode && this.game.selectedCard && this.game.selectedCard.type === "artefatto") {
+        const human = this.game.entities.find(e => e.isHuman);
+        if (human) {
+          const unit = human.field.find(u => u.q === q && u.r === r);
+          if (unit) {
+            this.game.attachArtifactToUnit(unit.instanceId);
+            if (window.onGameUpdate) window.onGameUpdate();
+            this.render();
+            return;
+          }
         }
       }
 

@@ -67,7 +67,9 @@ class GameState {
     this.selectedUnit = null;
     this.moveMode = false;
     this.playMode = false;
+    this.attachMode = false;
     this.targetMode = null;
+    this.attachMode = false;
     this.pendingTrap = null;
     this.mostrissimiPool = [];
     this.globalClearFogUntil = 0;
@@ -301,8 +303,24 @@ class GameState {
     this.selectedCard = card;
     this.selectedUnit = null;
     this.moveMode = false;
-    this.playMode = true;
     this.targetMode = null;
+
+    // Artefatto: deve essere legato a una creatura GIÀ in campo
+    if (card.type === "artefatto") {
+      if (e.field.filter(u => u.type !== "artefatto").length === 0) {
+        this.addLog("L'Artefatto deve essere legato a una creatura già in campo! Evocane prima una.");
+        this.selectedCard = null;
+        this.playMode = false;
+        return;
+      }
+      this.playMode = false;
+      this.attachMode = true;
+      this.addLog("Seleziona una TUA creatura in campo a cui legare l'Artefatto.");
+      return;
+    }
+
+    this.playMode = true;
+    this.attachMode = false;
     this.addLog("Selezionata: " + card.name + ". Clicca un esagono valido" + (card.needsTarget ? " o un bersaglio." : "."));
   }
 
@@ -313,7 +331,7 @@ class GameState {
     const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
     if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
 
-    if (card.type === "mostro" || card.type === "artefatto" || card.type === "mostrissimo") {
+    if (card.type === "mostro" || card.type === "mostrissimo") {
       if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Non puoi piazzare su una montagna!"); return false; }
       if (this.getUnitAt(q, r)) { this.addLog("Cella occupata!"); return false; }
       if (!this.isVisibleTo(e, q, r) && e.field.length > 0) {
@@ -394,6 +412,26 @@ class GameState {
       return true;
     }
     this.addLog("Bersaglio selezionato. Ne restano " + this.targetMode.remaining);
+    return true;
+  }
+
+
+  attachArtifactToUnit(unitInstanceId) {
+    const e = this.currentEntity;
+    if (!this.attachMode || !this.selectedCard || this.selectedCard.type !== "artefatto") return false;
+    const unit = e.field.find(u => u.instanceId === unitInstanceId);
+    if (!unit) { this.addLog("Devi legare l'Artefatto a una TUA creatura."); return false; }
+    const cost = this.selectedCard.currentCost !== undefined ? this.selectedCard.currentCost : 0;
+    if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
+    e.pay(cost);
+    e.hand = e.hand.filter(c => c.instanceId !== this.selectedCard.instanceId);
+    e.artifactAttachedTo = unit.instanceId;
+    // Marca la creatura
+    unit.hasArtifact = true;
+    this.addLog(e.name + " lega l'Artefatto a " + unit.name + "!", true);
+    this.selectedCard = null;
+    this.attachMode = false;
+    this.playMode = false;
     return true;
   }
 
@@ -879,7 +917,9 @@ class GameState {
     this.selectedUnit = null;
     this.moveMode = false;
     this.playMode = false;
+    this.attachMode = false;
     this.targetMode = null;
+    this.attachMode = false;
     this.addLog("--- Turno " + this.turnNumber + ": " + nextE.name + " (Mana " + nextE.mana + "/" + nextE.manaMax + ") ---", true);
   }
 
@@ -910,8 +950,27 @@ class GameState {
     if (!ai.hasArtifactOnField()) {
       const artCard = ai.hand.find(c => c.id === "artifact" || c.type === "artefatto");
       if (artCard && ai.canPay(artCard.currentCost || 0)) {
-        const target = this._findPlacementHex(ai);
-        if (target) { this.selectedCard = artCard; this.playMode = true; this.playCardOnHex(target[0], target[1]); }
+        // Preferisci una creatura già in campo
+        const creatures = ai.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
+        if (creatures.length) {
+          this.selectedCard = artCard;
+          this.attachMode = true;
+          this.attachArtifactToUnit(creatures[0].instanceId);
+        } else {
+          // Evoca prima un mostro se possibile, altrimenti skip
+          const mon = ai.hand.find(c => c.type === "mostro" && ai.canPay(c.cost || 0));
+          if (mon) {
+            const target = this._findPlacementHex(ai);
+            if (target) {
+              this.selectedCard = mon; this.playMode = true; this.playCardOnHex(target[0], target[1]);
+              // Poi lega artefatto
+              if (ai.field.length) {
+                this.selectedCard = artCard; this.attachMode = true;
+                this.attachArtifactToUnit(ai.field[0].instanceId);
+              }
+            }
+          }
+        }
       }
     }
     const playable = ai.hand.filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost));

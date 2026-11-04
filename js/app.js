@@ -149,28 +149,23 @@ function renderDraft() {
 
   statusEl.textContent = "Scelta di: " + picker.name;
   turnEl.textContent = "Bustina " + (game.draft.currentPick + 1) + " di " + game.draft.totalPicksNeeded +
-    " — Scegli una delle 3 bustine (prendi tutte e 3 le carte)";
+    " — Scegli una bustina (colore). Le carte restano nascoste.";
 
   const container = document.getElementById("packs-container");
   container.innerHTML = "";
   game.draft.packs.forEach((pack, pi) => {
     const packEl = document.createElement("div");
-    packEl.className = "pack" + (picker.isHuman ? " active-pack" : "");
+    packEl.className = "pack pack-sealed" + (picker.isHuman ? " active-pack" : "");
     packEl.style.cursor = picker.isHuman ? "pointer" : "default";
 
-    let cardsHtml = "";
-    pack.cards.forEach((card) => {
-      const stats = (card.atk !== undefined) ? (card.atk + "/" + card.hp) : "";
-      cardsHtml += '<div class="draft-card">' +
-        '<div class="card-name"><span class="color-dot color-' + card.color + '"></span>' + card.name + '</div>' +
-        '<div class="card-meta"><span>' + card.type + ' • Costo ' + card.cost + '</span><span>' + stats + '</span></div>' +
-        '<div class="card-meta" style="font-size:0.72rem;margin-top:4px;">' + (card.effect || "").substring(0, 60) + '</div>' +
-        '</div>';
-    });
-
-    packEl.innerHTML = '<div class="pack-header"><span class="color-dot color-' + pack.color + '"></span>Bustina ' +
-      (COLOR_NAMES[pack.color] || pack.color) + '</div><div class="pack-cards">' + cardsHtml + '</div>' +
-      (picker.isHuman ? '<button class="btn btn-primary" style="width:100%;margin-top:10px;">Scegli questa bustina</button>' : '');
+    // Solo colore della bustina, niente carte visibili
+    packEl.innerHTML =
+      '<div class="pack-sealed-inner color-bg-' + pack.color + '">' +
+        '<div class="pack-sealed-label">BUSTINA</div>' +
+        '<div class="pack-sealed-color">' + (COLOR_NAMES[pack.color] || pack.color) + '</div>' +
+        '<div class="pack-sealed-hint">3 carte nascoste</div>' +
+      '</div>' +
+      (picker.isHuman ? '<button class="btn btn-primary" style="width:100%;margin-top:12px;">Scegli questa bustina</button>' : '');
 
     if (picker.isHuman) {
       packEl.addEventListener("click", () => {
@@ -435,7 +430,23 @@ function renderMostrissimi() {
 
 window.onGameUpdate = renderGameState;
 
+
+// ---------- VIEWPORT / RESIZE ----------
+function fitToScreen() {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  document.documentElement.style.setProperty("--vw", w + "px");
+  document.documentElement.style.setProperty("--vh", h + "px");
+  // Ridimensiona canvas se in partita
+  if (typeof MapRenderer !== "undefined" && MapRenderer.canvas && MapRenderer.game) {
+    MapRenderer.render();
+  }
+}
+window.addEventListener("resize", fitToScreen);
+window.addEventListener("orientationchange", () => setTimeout(fitToScreen, 100));
+
 document.addEventListener("DOMContentLoaded", () => {
+  fitToScreen();
   initAuth();
 });
 

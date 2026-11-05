@@ -416,6 +416,13 @@ class GameState {
   }
 
   _finishDraft() {
+    // Evita doppia chiamata (causa timeout IA multipli e chiusura automatica del turno umano)
+    if (this.phase === "playing" || this._draftFinished) {
+      this.addLog("(_finishDraft ignorato: già completato)");
+      return;
+    }
+    this._draftFinished = true;
+
     this.activePlayers.forEach(e => {
       e.hand = (this.draft.picks[e.id] || []).map(c => ({ ...c }));
       e.artifact = { ...ARTIFACT_CARD, instanceId: "artifact_" + e.id, currentCost: 0 };
@@ -1281,7 +1288,14 @@ class GameState {
     // CADUTO: solo movimento creature (chase o random)
     if (ai.isFallen) {
       this._runFallenTurn(ai);
-      setTimeout(() => {
+      if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
+      this._aiEndTurnTimeout = setTimeout(() => {
+        this._aiEndTurnTimeout = null;
+        if (this.currentEntity && this.currentEntity.isHuman) {
+          this.addLog("(timeout IA caduta ignorato: è il turno dell'umano)");
+          if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
+          return;
+        }
         this.endTurn();
         if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
         if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
@@ -1372,7 +1386,16 @@ class GameState {
       }
       if (best) { this.selectedUnit = unit; this.moveMode = true; this.tryMoveOrAttack(best[0], best[1]); break; }
     }
-    setTimeout(() => {
+    // Salva il timeout così possiamo annullarlo se il turno diventa umano
+    if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
+    this._aiEndTurnTimeout = setTimeout(() => {
+      this._aiEndTurnTimeout = null;
+      // Sicurezza: non chiudere mai il turno di un umano da qui
+      if (this.currentEntity && this.currentEntity.isHuman) {
+        this.addLog("(timeout IA ignorato: è il turno dell'umano)");
+        if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
+        return;
+      }
       this.endTurn();
       if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
       if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);

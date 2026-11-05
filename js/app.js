@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "018";
+const APP_VERSION = "019";
 
 let game = null;
 let currentScreen = "auth";
@@ -137,6 +137,7 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
     numFallenTemples: setupFallen
   });
   humanDraftPicksDone = 0;
+  gameUIStarted = false;
   game.startDraft();
 
   // Pulisci subito le buste per evitare il flash
@@ -302,7 +303,14 @@ function renderDraft() {
 
 
 // ---------- GAME UI ----------
+let gameUIStarted = false;
 function startGameUI() {
+  // Evita avvio multiplo (causava timeout IA doppi e chiusura automatica del turno umano)
+  if (gameUIStarted && game && game.phase === "playing") {
+    console.log("startGameUI ignorato: già avviato");
+    return;
+  }
+  gameUIStarted = true;
   showScreen("game");
   MapRenderer.init("gameCanvas", game);
   setTimeout(() => { MapRenderer.center(); MapRenderer.render(); }, 50);

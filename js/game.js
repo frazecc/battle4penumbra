@@ -25,6 +25,9 @@ class Entity {
     this.clearFogUntil = 0;
     this.templeId = null; // cielo/luna/guerra/acqua
     this.factionPower = "Potere fazione (placeholder)"; // TODO futuro
+    this.firstPackPicked = false; // v027: primo pacchetto scelto
+    this.primaryColor = null;     // colore del primo pacchetto
+    this.apexCardInstanceId = null; // unica carta costo 6
   }
 
   startTurn() {
@@ -98,6 +101,9 @@ class GameState {
     this.pendingTeleportStep = null; // { unitInstanceId, entityId, q, r, legal: [[q,r],...] }
     this.specialZones = {};
     this._endTurnEntityId = null; // entità che sta chiudendo il turno (async TP/eventi)
+    this.pendingTempleOverwrite = null; // { card, q, r, victimInstanceId }
+    this.pendingEnemyTempleMove = null; // { unitInstanceId, q, r }
+    this.pendingCardPick = null; // { options: [card,card], entityId }
 
     this._initEntities();
     this._assignTemples();
@@ -341,11 +347,14 @@ class GameState {
     this.addLog("Draft stile 7 Wonders! Primo: " + first.name + " — Giro 1 (orario)", true);
   }
 
-  _generatePacks(count) {
+  _generatePacks(count, opts = {}) {
     const packs = [];
+    const allowCost6 = !!opts.allowCost6;
+    const forceColor = opts.forceColor || null;
     for (let p = 0; p < count; p++) {
-      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
-      const pool = ALL_CARDS.filter(c => c.color === color || color === "yellow");
+      const color = forceColor || COLORS[Math.floor(Math.random() * COLORS.length)];
+      let pool = ALL_CARDS.filter(c => c.color === color || color === "yellow");
+      if (!allowCost6) pool = pool.filter(c => (c.cost || 0) < 6);
       const cards = [];
       const poolCopy = [...pool];
       for (let i = 0; i < 3 && poolCopy.length; i++) {
@@ -354,9 +363,57 @@ class GameState {
         cards.push({ ...base, instanceId: base.id + "_p" + Date.now() + "_" + p + "_" + i + "_" + Math.random().toString(36).slice(2,6) });
         poolCopy.splice(idx, 1);
       }
-      packs.push({ color, cards, id: "pack_" + Date.now() + "_" + p });
+      packs.push({ color, cards, id: "pack_" + Date.now() + "_" + p + "_" + Math.random().toString(36).slice(2,5) });
     }
     return packs;
+  }
+
+  /** Inserisce nel pacchetto l'unica carta costo 6 del colore (mostro leggendario) */
+  _injectApexIntoPack(pack) {
+    const color = pack.color === "yellow"
+      ? COLORS[Math.floor(Math.random() * COLORS.length)]
+      : pack.color;
+    const apexPool = ALL_CARDS.filter(c => c.type === "mostro" && c.color === color && (c.cost || 0) === 6);
+    const apexBase = apexPool.length
+      ? apexPool[Math.floor(Math.random() * apexPool.length)]
+      : ALL_CARDS.filter(c => c.type === "mostro" && c.color === color).sort((a,b)=>(b.cost||0)-(a.cost||0))[0];
+    if (!apexBase) return pack;
+    const apex = {
+      ...apexBase,
+      cost: 6,
+      instanceId: apexBase.id + "_apex_" + Date.now() + "_" + Math.random().toString(36).slice(2,6),
+      isApex: true
+    };
+    // sostituisci la carta di costo più alto già presente, o aggiungi
+    if (pack.cards.length >= 3) {
+      let maxI = 0;
+      for (let i = 1; i < pack.cards.length; i++) {
+        if ((pack.cards[i].cost || 0) > (pack.cards[maxI].cost || 0)) maxI = i;
+      }
+      pack.cards[maxI] = apex;
+    } else {
+      pack.cards.push(apex);
+    }
+    pack.color = color;
+    return pack;
+  }
+
+  /** Rimuove carte costo 6 da un pacchetto (dopo il primo pick) */
+  _stripCost6FromPack(pack) {
+    const cleaned = pack.cards.filter(c => (c.cost || 0) < 6 && !c.isApex);
+    while (cleaned.length < pack.cards.length) {
+      const color = pack.color;
+      const pool = ALL_CARDS.filter(c => (c.color === color || color === "yellow") && (c.cost || 0) < 6);
+      if (!pool.length) break;
+      const base = pool[Math.floor(Math.random() * pool.length)];
+      cleaned.push({
+        ...base,
+        instanceId: base.id + "_fill_" + Date.now() + "_" + Math.random().toString(36).slice(2,6)
+      });
+      if (cleaned.length >= 3) break;
+    }
+    pack.cards = cleaned.slice(0, 3);
+    return pack;
   }
 
   getDraftCurrentPicker() {
@@ -371,7 +428,18 @@ class GameState {
     const picker = this.getDraftCurrentPicker();
     if (!picker) return false;
     if (packIndex < 0 || packIndex >= this.draft.packs.length) return false;
-    const pack = this.draft.packs[packIndex];
+    let pack = this.draft.packs[packIndex];
+    // v027: primo pacchetto → inietta leggendaria costo 6 del colore; dopo mai più costo 6
+    if (!picker.firstPackPicked) {
+      pack = this._injectApexIntoPack(pack);
+      picker.firstPackPicked = true;
+      picker.primaryColor = pack.color;
+      const apex = pack.cards.find(c => (c.cost || 0) >= 6 || c.isApex);
+      if (apex) picker.apexCardInstanceId = apex.instanceId;
+      this.addLog(picker.name + " sceglie il colore principale: " + (COLOR_NAMES[pack.color] || pack.color) + " (carta leggendaria costo 6)", true);
+    } else {
+      pack = this._stripCost6FromPack(pack);
+    }
     // Tutte le 3 carte della bustina vanno al giocatore
     pack.cards.forEach(card => {
       this.draft.picks[picker.id].push(card);
@@ -424,7 +492,17 @@ class GameState {
         if (score > bestScore) { bestScore = score; bestIdx = pi; }
       });
       // riusa draftPickPack senza ricorsione AI infinita
-      const pack = this.draft.packs[bestIdx];
+      let pack = this.draft.packs[bestIdx];
+      if (!picker.firstPackPicked) {
+        pack = this._injectApexIntoPack(pack);
+        picker.firstPackPicked = true;
+        picker.primaryColor = pack.color;
+        const apex = pack.cards.find(c => (c.cost || 0) >= 6 || c.isApex);
+        if (apex) picker.apexCardInstanceId = apex.instanceId;
+        this.addLog(picker.name + " colore principale: " + (COLOR_NAMES[pack.color] || pack.color), true);
+      } else {
+        pack = this._stripCost6FromPack(pack);
+      }
       pack.cards.forEach(card => this.draft.picks[picker.id].push(card));
       this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color));
       this.draft.packs.splice(bestIdx, 1);
@@ -529,13 +607,32 @@ class GameState {
 
     if (card.type === "mostro" || card.type === "mostrissimo") {
       if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Non puoi piazzare su una montagna!"); return false; }
-      if (this.getUnitAt(q, r)) { this.addLog("Cella occupata!"); return false; }
+      const occupant = this.getUnitAt(q, r);
       // MOSTRO: solo sul proprio tempio
       if (card.type === "mostro") {
         if (e.templeKey !== (q + "," + r)) {
           this.addLog("I mostri si evocano SOLO sul proprio Tempio!");
           return false;
         }
+        if (occupant) {
+          // Conferma distruzione (alleato o nemico)
+          this.pendingTempleOverwrite = {
+            card, q, r,
+            victimInstanceId: occupant.instanceId,
+            victimName: occupant.name,
+            victimOwnerId: occupant.ownerId
+          };
+          if (e.isHuman && typeof window !== "undefined" && window.onTempleOverwritePrompt) {
+            window.onTempleOverwritePrompt(this.pendingTempleOverwrite);
+          } else {
+            this.confirmTempleOverwrite(true);
+          }
+          return true;
+        }
+      }
+      if (occupant && card.type === "mostrissimo") {
+        this.addLog("Cella occupata!");
+        return false;
       }
       // MOSTRISSIMO (v023): solo Tempio proprio, oppure Altare/Circolo sbloccati dai sacrifici
       if (card.type === "mostrissimo") {
@@ -700,23 +797,16 @@ class GameState {
 
     const targetUnit = this.getUnitAt(q, r);
     if (!targetUnit) {
-      // Movimento semplice
-      e.pay(cost);
-      unit.q = q; unit.r = r;
-      unit.movedThisTurn = true;
-      this._revealAround(e, q, r, 2);
-
-      // Entra in esagono non scoperto → diventa avvizzita
-      if (!this.isCellDiscovered(q, r, e)) {
-        unit.isWithered = true;
-        this.addLog(unit.name + " entra in territorio inesplorato e diventa avvizzita.");
-      } else {
-        this.addLog(unit.name + " si muove su (" + q + "," + r + ")" + (cost === 0 ? " (primo passo gratuito)" : ""));
+      // Avviso tempio nemico
+      const enemyTemple = this.entities.find(ent => !ent.isFallen && ent.id !== e.id && ent.templeKey === (q + "," + r));
+      if (enemyTemple && e.isHuman && !this.pendingEnemyTempleMove) {
+        this.pendingEnemyTempleMove = { unitInstanceId: unit.instanceId, q, r, cost };
+        if (typeof window !== "undefined" && window.onEnemyTempleWarning) {
+          window.onEnemyTempleWarning({ templeOwner: enemyTemple.name, unitName: unit.name, q, r });
+        }
+        return true;
       }
-
-      this.selectedUnit = null;
-      this.moveMode = false;
-      return true;
+      return this._commitMove(unit, e, q, r, cost);
     }
     if (targetUnit.ownerId === e.id) { this.addLog("Cella alleata!"); return false; }
 
@@ -1524,43 +1614,14 @@ class GameState {
         if (self) { self.isWithered = false; this.addLog(self.name + " non è più avvizzita"); }
         break;
       case "ev_draw_1":
-        // placeholder: non c'è deck di pesca generico oltre alla mano draft
-        this.addLog(owner.name + " sente un presagio (pesca non disponibile in MVP).");
-        break;
-      case "ev_discard_1":
-        if (owner.hand.length) {
-          const idx = Math.floor(Math.random() * owner.hand.length);
-          const c = owner.hand.splice(idx, 1)[0];
-          owner.graveyard.push(c);
-          this.addLog(owner.name + " scarta " + c.name);
-        }
-        break;
-      case "ev_mana_loss_1":
-        owner.mana = Math.max(0, (owner.mana || 0) - 1);
-        this.addLog(owner.name + " perde 1 mana");
-        break;
-      case "ev_mana_gain_1":
-        owner.mana = (owner.mana || 0) + 1;
-        this.addLog(owner.name + " guadagna 1 mana");
-        break;
       case "ev_pay1_draw1":
-        if (owner.mana >= 1) { owner.mana -= 1; this.addLog("Paga 1 mana"); }
-        this.addLog("(effetto pesca semplificato)");
-        break;
       case "ev_pay2_draw2":
-        if (owner.mana >= 2) { owner.mana -= 2; this.addLog("Paga 2 mana"); }
-        else { this.addLog("Mana insufficiente per l'affare"); }
-        break;
       case "ev_draw1_discard1":
-        if (owner.hand.length) {
-          const idx = Math.floor(Math.random() * owner.hand.length);
-          const c = owner.hand.splice(idx, 1)[0];
-          owner.graveyard.push(c);
-          this.addLog("Scarta " + c.name);
-        }
+      case "ev_choose_color_card":
+        this._offerColorCardChoice(owner);
         break;
       case "ev_token_1_1":
-        this.addLog("Recluta: token non ancora generato (placeholder)");
+        this._spawnEventToken(owner);
         break;
       case "ev_foe_discard_1": {
         const foes = this.activePlayers.filter(e => e.id !== owner.id && e.hand.length);
@@ -1645,19 +1706,14 @@ class GameState {
         this.addLog(owner.name + ": nebbia squarciata fino al prossimo turno");
         break;
       case "ev_next_summon_discount":
-        owner.summonDiscount = (owner.summonDiscount || 0) + 1;
-        this.addLog("Prossima evocazione agevolata (sconto mana +1)");
-        break;
       case "ev_discount_hand_1":
-        if (owner.hand.length) {
-          const c = owner.hand[Math.floor(Math.random() * owner.hand.length)];
-          const base = c.currentCost !== undefined ? c.currentCost : (c.cost || 0);
-          c.currentCost = Math.max(0, base - 1);
-          this.addLog(c.name + " costa ora " + c.currentCost);
-        }
+        owner.mana = (owner.mana || 0) + 1;
+        this.addLog(owner.name + " guadagna 1 mana (ex-sconto)");
         break;
       case "ev_sac_buff_2":
       case "ev_sac_draw_2":
+        this._offerColorCardChoice(owner);
+        break;
       case "ev_discard1_heal_all_2":
       case "ev_dmg_self_1_draw_1":
       case "ev_dmg_self_1_or_shield":

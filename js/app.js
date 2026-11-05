@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "026";
+const APP_VERSION = "027";
 
 let game = null;
 let currentScreen = "auth";
@@ -1100,5 +1100,58 @@ window.onTeleportStepDone = function() {
     modal.classList.add("hidden");
     modal.style.display = "none";
   }
+};
+
+
+
+window.onTempleOverwritePrompt = function(p) {
+  const modal = document.getElementById("temple-overwrite-modal");
+  if (!modal) return;
+  const body = document.getElementById("temple-overwrite-body");
+  if (body) {
+    body.innerHTML = "Il Tempio è occupato da <strong>" + (p.victimName || "una creatura") + "</strong>.<br>Vuoi distruggerla per evocare la nuova carta?";
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+window.onEnemyTempleWarning = function(info) {
+  const modal = document.getElementById("enemy-temple-modal");
+  if (!modal) return;
+  const body = document.getElementById("enemy-temple-body");
+  if (body) {
+    body.innerHTML = "Attenzione! Stai per entrare nel Tempio di <strong>" + (info.templeOwner || "un nemico") + "</strong>.<br><br>È molto pericoloso: la tua creatura potrebbe scomparire da un momento all\'altro se resti qui dentro.";
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+window.onCardPickPrompt = function(pending) {
+  const modal = document.getElementById("card-pick-modal");
+  const box = document.getElementById("card-pick-options");
+  if (!modal || !box || !pending) return;
+  box.innerHTML = "";
+  const title = document.getElementById("card-pick-title");
+  if (title) title.textContent = "Scegli una carta (" + ((typeof COLOR_NAMES !== "undefined" && COLOR_NAMES[pending.color]) || pending.color || "?") + ")";
+  pending.options.forEach(card => {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary";
+    btn.style.cssText = "width:100%;text-align:left;margin-bottom:8px;";
+    btn.innerHTML = "<strong>" + card.name + "</strong><br><span style=\"opacity:0.8;font-size:0.85rem\">" +
+      (card.type || "") + " · costo " + (card.cost || 0) +
+      (card.atk != null ? " · " + card.atk + "/" + card.hp : "") + "</span>";
+    btn.onclick = () => {
+      modal.style.display = "none";
+      modal.classList.add("hidden");
+      if (game) game.resolveCardPick(card.instanceId);
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+    };
+    btn.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (typeof showCardDetail === "function") showCardDetail(card, { fromHand: false, readOnly: true });
+    };
+    box.appendChild(btn);
+  });
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
 };
 

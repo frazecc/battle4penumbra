@@ -92,9 +92,9 @@ const ALL_CARDS = [
 
   // Mostri Standard
   { id: "m06", name: "Guardiano d'Avorio", type: "mostro", color: "white", cost: 2, atk: 1, hp: 4,
-    effect: "ETB: +2 PV a sé. Uscita: cura 2 PV a un alleato.", effectId: "etb_heal_self_2" },
+    effect: "ETB: +2 PV a sé. Uscita: cura 2 PV a un alleato.", effectId: "etb_heal_self_2", leaveEffectId: "leave_heal_ally_2" },
   { id: "m07", name: "Furia Cremisi", type: "mostro", color: "red", cost: 2, atk: 3, hp: 2,
-    effect: "ETB: 1 danno a bersaglio. Uscita: 1 danno all'attaccante.", effectId: "etb_damage_1" },
+    effect: "ETB: 1 danno a bersaglio. Uscita: 1 danno all'attaccante.", effectId: "etb_damage_1", leaveEffectId: "leave_damage_attacker_1" },
   { id: "m08", name: "Ombra Strisciante", type: "mostro", color: "black", cost: 3, atk: 2, hp: 2,
     effect: "ETB: sacrifica una creatura alleata per distruggerne una nemica.", effectId: "etb_sac_destroy" },
   { id: "m09", name: "Sentinella di Cristallo", type: "mostro", color: "blue", cost: 2, atk: 1, hp: 3,

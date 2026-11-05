@@ -16,24 +16,23 @@ Non si toccano parti del codice non richieste dalla consegna corrente
 Alla fine di ogni lavoro si consegna la sottocartella pronta
 e il file situazione attuale aggiornato.
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 023 – VERSION: v023
-NEW – Flusso interattivo di evocazione Mostrissimi
-Clic sul Mostrissimo dal pool → entra in modalità Sacrificio
-Contatore in alto: "Sacrificati: X / Y — Nome Mostrissimo"
-Clic sulle proprie creature una alla volta per sacrificarle
-Ogni creatura va al cimitero tramite _destroyUnit
-Le morti a catena (on-death di altre creature) NON contano
-Se la creatura sacrificata stava su Altare (city) o Circolo Rituale,
-quella cella viene sbloccata come destinazione legale
-Quando si raggiunge esattamente il numero di sacrifici richiesti:
-Passa automaticamente in modalità Evoca
-Caselle legali (oro + pulse):
-• sempre il proprio Tempio (se libero)
-• + Altare / Circoli su cui è stata sacrificata una creatura
-Clic sulla casella scelta → Mostrissimo entra in campo (avvizzito)
-Bottone Annulla interrompe tutta la procedura
-CHANGE
-I Mostrissimi NON si possono più piazzare liberamente su qualsiasi
-Tempio / Altare / Circolo.
-Non esiste più il sacrificio automatico dei primi N permanenti.
-FILE: js/game.js, js/map.js, js/app.js, index.html
+BATTLE FOR PENUMBRA – consegna 024 – VERSION: v024
+NEW – Effetti di Uscita (leave) sulle creature
+Aggiunto campo leaveEffectId sulle carte che hanno testo "Uscita:"
+• m06 Guardiano d'Avorio → leave_heal_ally_2
+(cura +2 PV all'alleato con meno PV rimanenti)
+• m07 Furia Cremisi → leave_damage_attacker_1
+(1 danno all'attaccante se presente nel contesto di combattimento)
+_destroyUnit(unit, ctx) ora:
+rimuove l'unità dal campo
+gestisce il ritorno dell'Artefatto
+risolve leaveEffectId tramite _resolveLeaveEffect
+Il combattimento non fa più la rimozione "inline":
+usa sempre _destroyUnit, così Uscita scatta anche in combattimento
+(e nei sacrifici Mostrissimi, maledizioni, danni da effetti, ecc.)
+NOTE
+Se non c'è attaccante (es. sacrificio Mostrissimo), leave_damage_attacker_1
+non fa danno e logga il motivo.
+Se non ci sono alleati, leave_heal_ally_2 non cura nessuno.
+Le Trappole on_death restano gestite a parte via _checkTraps.
+FILE: js/game.js, js/data.js, js/app.js, index.html

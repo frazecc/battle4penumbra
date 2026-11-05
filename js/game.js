@@ -740,18 +740,14 @@ class GameState {
       this.addLog("Scudo assorbe " + absorbed + " danni");
     }
     if (dmg >= defender.currentHp) {
-      this.addLog(defender.name + " viene distrutto!");
-      defEnt.field = defEnt.field.filter(u => u.instanceId !== defender.instanceId);
-      defEnt.graveyard.push(defender);
-      if (defEnt.artifactAttachedTo === defender.instanceId) {
-        defEnt.artifactAttachedTo = null;
-        const art = { ...defEnt.artifact, currentCost: (defEnt.artifact.currentCost || 0) + 3 };
-        defEnt.hand.push(art);
-        this.addLog("L\\'Artefatto di " + defEnt.name + " torna in mano (costo " + art.currentCost + ")");
-      }
+      const defQ = defender.q, defR = defender.r;
+      this._destroyUnit(defender, { attacker, defender });
       this._checkTraps(defEnt, "on_death", { attacker, defender });
-      attacker.q = defender.q; attacker.r = defender.r;
-      this._revealAround(atkEnt, attacker.q, attacker.r, 2);
+      // L'attaccante occupa la cella del difensore solo se è ancora vivo
+      if (atkEnt.field.some(u => u.instanceId === attacker.instanceId)) {
+        attacker.q = defQ; attacker.r = defR;
+        this._revealAround(atkEnt, attacker.q, attacker.r, 2);
+      }
     } else {
       defender.currentHp -= dmg;
       this.addLog(defender.name + " subisce " + dmg + " → " + defender.currentHp + " PV");
@@ -763,14 +759,7 @@ class GameState {
       }
       if (counter >= (attacker.currentHp || 1)) {
         this.addLog(attacker.name + " muore dal contrattacco!");
-        atkEnt.field = atkEnt.field.filter(u => u.instanceId !== attacker.instanceId);
-        atkEnt.graveyard.push(attacker);
-        if (atkEnt.artifactAttachedTo === attacker.instanceId) {
-          atkEnt.artifactAttachedTo = null;
-          const art = { ...atkEnt.artifact, currentCost: (atkEnt.artifact.currentCost || 0) + 3 };
-          atkEnt.hand.push(art);
-          this.addLog("L\\'Artefatto di " + atkEnt.name + " torna in mano");
-        }
+        this._destroyUnit(attacker, { attacker: defender, defender: attacker });
       } else if (counter > 0) {
         attacker.currentHp -= counter;
         this.addLog("Contrattacco: " + attacker.name + " ha " + attacker.currentHp + " PV");
@@ -1036,18 +1025,74 @@ class GameState {
     if (unit.currentHp <= 0) this._destroyUnit(unit);
   }
 
-  _destroyUnit(unit) {
+  /**
+   * Distrugge un'unità e risolve gli effetti di Uscita.
+   * @param {object} unit
+   * @param {object} [ctx]  contesto opzionale (es. { attacker } in combattimento)
+   */
+  _destroyUnit(unit, ctx) {
     if (!unit) return;
     const ent = this.getEntityById(unit.ownerId);
     if (!ent) return;
+
+    // Rimuovi dal campo PRIMA di risolvere Uscita (così "alleato" non include sé stesso)
     ent.field = ent.field.filter(u => u.instanceId !== unit.instanceId);
     ent.graveyard.push(unit);
     this.addLog(unit.name + " è stato distrutto!");
+
+    // Artefatto attaccato torna in mano
     if (ent.artifactAttachedTo === unit.instanceId) {
       ent.artifactAttachedTo = null;
-      const art = { ...ent.artifact, currentCost: (ent.artifact.currentCost || 0) + 3 };
-      ent.hand.push(art);
-      this.addLog("L\\'Artefatto di " + ent.name + " torna in mano (costo " + art.currentCost + ")");
+      if (ent.artifact) {
+        const art = { ...ent.artifact, currentCost: (ent.artifact.currentCost || 0) + 3 };
+        ent.hand.push(art);
+        this.addLog("L'Artefatto di " + ent.name + " torna in mano (costo " + art.currentCost + ")");
+      }
+    }
+
+    // Effetti di Uscita (leave)
+    if (unit.leaveEffectId) {
+      this._resolveLeaveEffect(unit, ent, ctx || {});
+    }
+  }
+
+  /** Risolve leaveEffectId di una creatura appena uscita dal campo */
+  _resolveLeaveEffect(unit, owner, ctx) {
+    const id = unit.leaveEffectId;
+    if (!id) return;
+    switch (id) {
+      case "leave_heal_ally_2": {
+        const allies = owner.field.filter(u => u.instanceId !== unit.instanceId);
+        if (!allies.length) {
+          this.addLog("Uscita di " + unit.name + ": nessun alleato da curare.");
+          break;
+        }
+        // Preferisce l'alleato con meno PV correnti
+        allies.sort((a, b) => (a.currentHp || 0) - (b.currentHp || 0));
+        const target = allies[0];
+        target.currentHp = (target.currentHp || 0) + 2;
+        this.addLog("Uscita di " + unit.name + ": " + target.name + " cura +2 PV (ora " + target.currentHp + ")");
+        break;
+      }
+      case "leave_damage_attacker_1": {
+        const attacker = ctx && ctx.attacker;
+        if (!attacker) {
+          this.addLog("Uscita di " + unit.name + ": nessun attaccante da colpire.");
+          break;
+        }
+        // L'attaccante potrebbe essere già morto o rimosso
+        const stillOnField = this.getEntityById(attacker.ownerId)
+          && this.getEntityById(attacker.ownerId).field.some(u => u.instanceId === attacker.instanceId);
+        if (!stillOnField) {
+          this.addLog("Uscita di " + unit.name + ": l'attaccante non è più in campo.");
+          break;
+        }
+        this._applyDamage(attacker, 1);
+        this.addLog("Uscita di " + unit.name + ": 1 danno a " + attacker.name);
+        break;
+      }
+      default:
+        this.addLog("Uscita sconosciuta: " + id);
     }
   }
 

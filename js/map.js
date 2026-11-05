@@ -119,6 +119,9 @@ const MapRenderer = {
       this._highlightHex(this.game.selectedUnit.q, this.game.selectedUnit.r, "#FFD54F");
     }
 
+    // Pulse per caselle legali (0.2–0.45)
+    const pulse = 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(Date.now() / 280));
+
     // In modalità Muovi: evidenzia le caselle legali (adiacenti libere, non montagna)
     if (this.game?.moveMode && this.game.selectedUnit && !this.game.selectedUnit.isWithered) {
       const u = this.game.selectedUnit;
@@ -131,8 +134,67 @@ const MapRenderer = {
         if (CELL_TYPE.get(key) === "mountain") continue;
         if (this.game.getUnitAt(nq, nr)) continue;
         this._highlightHex(nq, nr, "#69F0AE");
-        // Riempimento leggero
-        this._fillHexSoft(nq, nr, "rgba(105, 240, 174, 0.25)");
+        this._fillHexSoft(nq, nr, "rgba(105, 240, 174, " + pulse + ")");
+      }
+      if (!this._pulseScheduled) {
+        this._pulseScheduled = true;
+        requestAnimationFrame(() => {
+          this._pulseScheduled = false;
+          if (this.game?.moveMode) this.render();
+        });
+      }
+    }
+
+    // In modalità Evoca / Play: evidenzia le caselle legali di piazzamento
+    if (this.game?.playMode && this.game.selectedCard) {
+      const card = this.game.selectedCard;
+      const e = this.game.currentEntity;
+      const t = (card.type || "").toLowerCase();
+      const legal = [];
+
+      if (t === "mostro" && e && e.templeKey) {
+        const [tq, tr] = e.templeKey.split(",").map(Number);
+        if (!this.game.getUnitAt(tq, tr) && CELL_TYPE.get(e.templeKey) !== "mountain") {
+          legal.push([tq, tr]);
+        }
+      } else if (t === "mostrissimo") {
+        for (const [key, type] of CELL_TYPE) {
+          if (type === "temple" || type === "city" || type === "circolo") {
+            const [q, r] = key.split(",").map(Number);
+            if (!this.game.getUnitAt(q, r)) legal.push([q, r]);
+          }
+        }
+      }
+
+      for (const [q, r] of legal) {
+        this._highlightHex(q, r, "#FFD54F");
+        this._fillHexSoft(q, r, "rgba(255, 213, 79, " + pulse + ")");
+      }
+
+      // Richiedi un nuovo frame per il lampeggio
+      if (legal.length && !this._pulseScheduled) {
+        this._pulseScheduled = true;
+        requestAnimationFrame(() => {
+          this._pulseScheduled = false;
+          if (this.game?.playMode || this.game?.moveMode) this.render();
+        });
+      }
+    }
+
+    // Attach Artefatto: evidenzia le proprie creature
+    if (this.game?.attachMode && this.game.currentEntity) {
+      for (const u of this.game.currentEntity.field) {
+        if (u.type === "mostro" || u.type === "mostrissimo" || u.id === "token_free") {
+          this._highlightHex(u.q, u.r, "#CE93D8");
+          this._fillHexSoft(u.q, u.r, "rgba(206, 147, 216, " + pulse + ")");
+        }
+      }
+      if (!this._pulseScheduled) {
+        this._pulseScheduled = true;
+        requestAnimationFrame(() => {
+          this._pulseScheduled = false;
+          if (this.game?.attachMode) this.render();
+        });
       }
     }
 

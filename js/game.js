@@ -91,9 +91,18 @@ class GameState {
     this.sacrificeNeeded = 0;
     this.sacrificedPositions = new Set(); // chiavi "q,r" di Altare/Circolo sbloccati dai sacrifici
 
+    // v025
+    this.mostrissimiSummonedThisTurn = 0;
+    this.pendingEventChoice = null; // { options: [{type,key,label}], entityId }
+    this.specialZones = {};
+
     this._initEntities();
     this._assignTemples();
     this._initMostrissimiPool();
+    if (typeof generateSpecialZones === "function") {
+      this.specialZones = generateSpecialZones();
+      if (typeof SPECIAL_ZONES !== "undefined") SPECIAL_ZONES = this.specialZones;
+    }
   }
 
   _initEntities() {
@@ -565,6 +574,9 @@ class GameState {
       this.sacrificeCount = 0;
       this.sacrificeNeeded = 0;
       this.sacrificedPositions = new Set();
+      if (card.type === "mostrissimo") {
+        this.mostrissimiSummonedThisTurn = (this.mostrissimiSummonedThisTurn || 0) + 1;
+      }
       return true;
     }
 
@@ -1171,33 +1183,45 @@ class GameState {
         this.addLog(u.name + " (Pianura) ottiene +1 ATK permanente");
       }
     });
-    // Fine turno: SCOPRI (flip) tutte le celle con creature del giocatore
-    // + un evento casuale su una di quelle celle
+
+    // 1) Flip tutte le celle occupate da creature alleate
     if (current.field.length > 0) {
-      const occupied = [];
       current.field.forEach(u => {
         const key = u.q + "," + u.r;
         const wasNew = !this.flippedCells.has(key);
         this.flippedCells.add(key);
         if (wasNew) {
           const t = CELL_TYPE.get(key) || "plain";
-          this.addLog("Esagono scoperto (" + u.q + "," + u.r + "): " + t, true);
+          const def = (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[t]) ? TILE_TYPE_DEFS[t] : null;
+          this.addLog("Esagono scoperto (" + u.q + "," + u.r + "): " + (def ? def.name : t), true);
         }
-        occupied.push(u);
       });
-      // Un evento sulla cella di una creatura a caso
-      const u = occupied[Math.floor(Math.random() * occupied.length)];
-      const key = u.q + "," + u.r;
-      const type = CELL_TYPE.get(key) || "plain";
-      const events = (typeof TERRAIN_EVENTS !== "undefined" && TERRAIN_EVENTS[type]) ? TERRAIN_EVENTS[type] : [];
-      if (events && events.length) {
-        const ev = events[Math.floor(Math.random() * events.length)];
-        this.addLog("📜 Evento [" + type + "] " + ev.name + " – " + (ev.passive || ""), true);
-        this._applyTerrainEvent(ev, u, current);
-      } else if (type !== "mountain") {
-        this.addLog("Nessun evento per zona " + type);
+
+      // 2) Risolvi teletrasporti (non si può restare su TP)
+      this._resolveTeleportsForEntity(current);
+
+      // 3) Fase eventi: 1 solo evento, scelto tra i tipi di tessera speciale occupati (no TP)
+      const options = this._collectEventOptions(current);
+      if (options.length === 1) {
+        this._drawAndResolveEvent(current, options[0]);
+      } else if (options.length > 1) {
+        if (current.isHuman) {
+          this.pendingEventChoice = { options, entityId: current.id };
+          if (typeof window !== "undefined" && window.onEventChoicePrompt) {
+            window.onEventChoicePrompt(this.pendingEventChoice);
+          }
+          // Il turno prosegue dopo la scelta (resolvePendingEventChoice)
+          return;
+        } else {
+          const pick = options[Math.floor(Math.random() * options.length)];
+          this._drawAndResolveEvent(current, pick);
+        }
       }
     }
+    this._finishEndTurn(current);
+  }
+
+  _finishEndTurn(current) {
     if (!current.isFallen) {
       // L'Artefatto deve essere SUL CAMPO a fine turno.
       // Eccezione di sicurezza: non far scattare la sconfitta se siamo ancora al turnNumber 1
@@ -1242,6 +1266,7 @@ class GameState {
     this.turnNumber++;
     const nextE = this.currentEntity;
     nextE.startTurn();
+    this.mostrissimiSummonedThisTurn = 0;
     this._spawnFreeToken(nextE);
     this.selectedCard = null;
     this.selectedUnit = null;
@@ -1250,7 +1275,328 @@ class GameState {
     this.attachMode = false;
     this.targetMode = null;
     this.attachMode = false;
+    this.pendingEventChoice = null;
     this.addLog("--- Turno " + this.turnNumber + ": " + nextE.name + " (Mana " + nextE.mana + "/" + nextE.manaMax + ") ---", true);
+  }
+
+  /** Continua endTurn dopo eventuale scelta evento umana */
+  resolvePendingEventChoice(type) {
+    if (!this.pendingEventChoice) return false;
+    const current = this.getEntityById(this.pendingEventChoice.entityId) || this.currentEntity;
+    const opt = this.pendingEventChoice.options.find(o => o.type === type);
+    this.pendingEventChoice = null;
+    if (opt) this._drawAndResolveEvent(current, opt);
+    this._finishEndTurn(current);
+    return true;
+  }
+
+  _collectEventOptions(entity) {
+    const seen = new Map(); // type -> {type, key, label, unit}
+    for (const u of entity.field) {
+      const key = u.q + "," + u.r;
+      const t = CELL_TYPE.get(key);
+      if (!t || t === "teletrasporto") continue;
+      if (typeof EVENT_TILE_TYPES !== "undefined" && !EVENT_TILE_TYPES.includes(t)) continue;
+      if (seen.has(t)) continue;
+      const def = (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[t]) ? TILE_TYPE_DEFS[t] : { name: t, icon: "?" };
+      seen.set(t, { type: t, key, label: (def.icon || "") + " " + (def.name || t), unit: u });
+    }
+    return Array.from(seen.values());
+  }
+
+  _drawAndResolveEvent(entity, option) {
+    const type = option.type;
+    const deck = (typeof EVENT_DECKS !== "undefined" && EVENT_DECKS[type]) ? EVENT_DECKS[type] : [];
+    if (!deck.length) {
+      this.addLog("Nessun evento nel mazzo " + type);
+      return;
+    }
+    // Pesca uniforme = mazzo sempre "rimischiato"
+    const ev = deck[Math.floor(Math.random() * deck.length)];
+    const unit = option.unit || entity.field.find(u => (u.q + "," + u.r) === option.key) || entity.field[0];
+    this.addLog("📜 [" + type + "] " + ev.name + " — " + (ev.text || ""), true);
+    this._resolveTileEvent(ev, unit, entity);
+  }
+
+  _resolveTeleportsForEntity(entity) {
+    const tpKeys = [];
+    for (const [key, type] of CELL_TYPE) {
+      if (type === "teletrasporto") tpKeys.push(key);
+    }
+    if (tpKeys.length < 2) return;
+
+    // Copia lista unità: il campo può cambiare durante lo spostamento
+    const units = entity.field.slice();
+    for (const u of units) {
+      const key = u.q + "," + u.r;
+      if (CELL_TYPE.get(key) !== "teletrasporto") continue;
+
+      const others = tpKeys.filter(k => k !== key);
+      const destKey = others[Math.floor(Math.random() * others.length)];
+      const [dq, dr] = destKey.split(",").map(Number);
+      this.flippedCells.add(destKey);
+      // Se occupata, cerca adiacente libera al dest
+      let tq = dq, tr = dr;
+      if (this.getUnitAt(dq, dr) && !(this.getUnitAt(dq, dr).instanceId === u.instanceId)) {
+        const adj = this._hexesInRange(dq, dr, 1);
+        const free = adj.find(([aq, ar]) => !this.getUnitAt(aq, ar) && CELL_TYPE.get(aq + "," + ar) !== "mountain");
+        if (free) { tq = free[0]; tr = free[1]; }
+        else {
+          this.addLog(u.name + " non trova uscita dal teletrasporto!");
+          continue;
+        }
+      }
+      u.q = tq; u.r = tr;
+      this.addLog("🌀 " + u.name + " teletrasportato su (" + tq + "," + tr + ")", true);
+      this._revealAround(entity, tq, tr, 2);
+
+      // Passo obbligatorio gratuito fuori dal TP
+      if (CELL_TYPE.get(tq + "," + tr) === "teletrasporto") {
+        const stepAdj = this._hexesInRange(tq, tr, 1);
+        const legal = stepAdj.filter(([aq, ar]) => {
+          if (this.getUnitAt(aq, ar)) return false;
+          const ct = CELL_TYPE.get(aq + "," + ar);
+          if (ct === "mountain" || ct === "teletrasporto") return false;
+          return true;
+        });
+        if (legal.length) {
+          const [sq, sr] = legal[Math.floor(Math.random() * legal.length)];
+          u.q = sq; u.r = sr;
+          this.flippedCells.add(sq + "," + sr);
+          this.addLog(u.name + " compie il passo obbligatorio su (" + sq + "," + sr + ")");
+          this._revealAround(entity, sq, sr, 2);
+        }
+      }
+    }
+  }
+
+  _resolveTileEvent(ev, unit, owner) {
+    if (!ev || !ev.effectId) return;
+    const id = ev.effectId;
+    const self = unit;
+    switch (id) {
+      case "ev_shield_1":
+        if (self) { self.shields = (self.shields || 0) + 1; this.addLog(self.name + " +1 scudo"); }
+        break;
+      case "ev_shield_2":
+        if (self) { self.shields = (self.shields || 0) + 2; this.addLog(self.name + " +2 scudi"); }
+        break;
+      case "ev_heal_self_1":
+        if (self) { self.currentHp = (self.currentHp || 0) + 1; this.addLog(self.name + " +1 PV"); }
+        break;
+      case "ev_heal_self_2":
+        if (self) { self.currentHp = (self.currentHp || 0) + 2; this.addLog(self.name + " +2 PV"); }
+        break;
+      case "ev_heal_self_3":
+        if (self) { self.currentHp = (self.currentHp || 0) + 3; this.addLog(self.name + " +3 PV"); }
+        break;
+      case "ev_heal_all_1":
+        owner.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 1; });
+        this.addLog("Tutti gli alleati +1 PV");
+        break;
+      case "ev_heal_all_2_if_lost":
+        // Semplicificato: cura sempre 2 (il "se hai perso" richiederebbe tracking)
+        owner.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 2; });
+        this.addLog("Tenebre fertili: alleati +2 PV");
+        break;
+      case "ev_dmg_self_1":
+        this._applyEventDamage(self, owner, 1);
+        break;
+      case "ev_dmg_self_2":
+        this._applyEventDamage(self, owner, 2);
+        break;
+      case "ev_atk_perm_1":
+        if (self) { self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1; this.addLog(self.name + " +1 ATK permanente"); }
+        break;
+      case "ev_atk_perm_1_hp_1":
+        if (self) {
+          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1;
+          self.currentHp = (self.currentHp || 0) + 1;
+          this.addLog(self.name + " +1/+1");
+        }
+        break;
+      case "ev_hp_perm_1":
+        if (self) { self.currentHp = (self.currentHp || 0) + 1; this.addLog(self.name + " +1 PV"); }
+        break;
+      case "ev_wither_self":
+        if (self) { self.isWithered = true; this.addLog(self.name + " diventa avvizzita"); }
+        break;
+      case "ev_wither_clear":
+        if (self) { self.isWithered = false; this.addLog(self.name + " non è più avvizzita"); }
+        break;
+      case "ev_draw_1":
+        // placeholder: non c'è deck di pesca generico oltre alla mano draft
+        this.addLog(owner.name + " sente un presagio (pesca non disponibile in MVP).");
+        break;
+      case "ev_discard_1":
+        if (owner.hand.length) {
+          const idx = Math.floor(Math.random() * owner.hand.length);
+          const c = owner.hand.splice(idx, 1)[0];
+          owner.graveyard.push(c);
+          this.addLog(owner.name + " scarta " + c.name);
+        }
+        break;
+      case "ev_mana_loss_1":
+        owner.mana = Math.max(0, (owner.mana || 0) - 1);
+        this.addLog(owner.name + " perde 1 mana");
+        break;
+      case "ev_mana_gain_1":
+        owner.mana = (owner.mana || 0) + 1;
+        this.addLog(owner.name + " guadagna 1 mana");
+        break;
+      case "ev_pay1_draw1":
+        if (owner.mana >= 1) { owner.mana -= 1; this.addLog("Paga 1 mana"); }
+        this.addLog("(effetto pesca semplificato)");
+        break;
+      case "ev_pay2_draw2":
+        if (owner.mana >= 2) { owner.mana -= 2; this.addLog("Paga 2 mana"); }
+        else { this.addLog("Mana insufficiente per l'affare"); }
+        break;
+      case "ev_draw1_discard1":
+        if (owner.hand.length) {
+          const idx = Math.floor(Math.random() * owner.hand.length);
+          const c = owner.hand.splice(idx, 1)[0];
+          owner.graveyard.push(c);
+          this.addLog("Scarta " + c.name);
+        }
+        break;
+      case "ev_token_1_1":
+        this.addLog("Recluta: token non ancora generato (placeholder)");
+        break;
+      case "ev_foe_discard_1": {
+        const foes = this.activePlayers.filter(e => e.id !== owner.id && e.hand.length);
+        if (foes.length) {
+          const foe = foes[Math.floor(Math.random() * foes.length)];
+          const idx = Math.floor(Math.random() * foe.hand.length);
+          const c = foe.hand.splice(idx, 1)[0];
+          foe.graveyard.push(c);
+          this.addLog(foe.name + " scarta " + c.name);
+        }
+        break;
+      }
+      case "ev_dmg_enemy_vis_1":
+        this._damageVisibleTarget(owner, 1);
+        break;
+      case "ev_dmg_enemy_adj_1":
+        if (self) {
+          const adj = this._hexesInRange(self.q, self.r, 1);
+          for (const [aq, ar] of adj) {
+            const au = this.getUnitAt(aq, ar);
+            if (au && au.ownerId !== owner.id) {
+              this._applyDamage(au, 1);
+              this.addLog("Agguato: 1 danno a " + au.name);
+              break;
+            }
+          }
+        }
+        break;
+      case "ev_wither_enemy_vis": {
+        for (const ent of this.entities) {
+          if (ent.id === owner.id || ent.isFallen) continue;
+          for (const u of ent.field) {
+            if (this.isVisibleTo(owner, u.q, u.r)) {
+              u.isWithered = true;
+              this.addLog(u.name + " diventa avvizzita (sguardo di pietra)");
+              return;
+            }
+          }
+        }
+        break;
+      }
+      case "ev_coin_heal2_or_dmg2":
+        if (Math.random() < 0.5) {
+          if (self) { self.currentHp = (self.currentHp || 0) + 2; this.addLog("Rito: +2 PV"); }
+        } else {
+          this._applyEventDamage(self, owner, 2);
+          this.addLog("Rito instabile: 2 danni");
+        }
+        break;
+      case "ev_next_attack_plus_2":
+        if (self) { self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 2; this.addLog(self.name + " +2 ATK (folla)"); }
+        break;
+      case "ev_dmg1_atk_perm_2":
+        this._applyEventDamage(self, owner, 1);
+        if (self && (self.currentHp || 0) > 0) {
+          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 2;
+          this.addLog(self.name + " +2 ATK permanente");
+        }
+        break;
+      case "ev_shield_1_atk_1":
+        if (self) {
+          self.shields = (self.shields || 0) + 1;
+          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1;
+          this.addLog(self.name + " +1 scudo +1 ATK");
+        }
+        break;
+      case "ev_dmg_self_1_atk_1":
+        this._applyEventDamage(self, owner, 1);
+        if (self) { self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1; }
+        break;
+      case "ev_heal1_wither":
+        if (self) { self.currentHp = (self.currentHp || 0) + 1; self.isWithered = true; this.addLog(self.name + " +1 PV e avvizzita"); }
+        break;
+      case "ev_shield_mostrissimo": {
+        const ms = owner.field.find(u => u.type === "mostrissimo");
+        if (ms) { ms.shields = (ms.shields || 0) + 1; this.addLog(ms.name + " +1 scudo"); }
+        else this.addLog("Nessun Mostrissimo da proteggere");
+        break;
+      }
+      case "ev_clear_fog_self":
+        owner.clearFogUntil = this.turnNumber + 1;
+        this.addLog(owner.name + ": nebbia squarciata fino al prossimo turno");
+        break;
+      case "ev_next_summon_discount":
+        owner.summonDiscount = (owner.summonDiscount || 0) + 1;
+        this.addLog("Prossima evocazione agevolata (sconto mana +1)");
+        break;
+      case "ev_discount_hand_1":
+        if (owner.hand.length) {
+          const c = owner.hand[Math.floor(Math.random() * owner.hand.length)];
+          const base = c.currentCost !== undefined ? c.currentCost : (c.cost || 0);
+          c.currentCost = Math.max(0, base - 1);
+          this.addLog(c.name + " costa ora " + c.currentCost);
+        }
+        break;
+      case "ev_sac_buff_2":
+      case "ev_sac_draw_2":
+      case "ev_discard1_heal_all_2":
+      case "ev_dmg_self_1_draw_1":
+      case "ev_dmg_self_1_or_shield":
+      case "ev_temp_buff_1_1":
+      case "ev_shield_1_draw_1":
+        // Effetti compositi semplificati
+        if (id === "ev_temp_buff_1_1" && self) {
+          self.shields = (self.shields || 0) + 1;
+          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1;
+          this.addLog(self.name + " sovraccarico +1/+1 scudo");
+        } else if (id === "ev_shield_1_draw_1" && self) {
+          self.shields = (self.shields || 0) + 1;
+          this.addLog(self.name + " +1 scudo");
+        } else if (id === "ev_dmg_self_1_draw_1") {
+          this._applyEventDamage(self, owner, 1);
+        } else if (id === "ev_dmg_self_1_or_shield") {
+          if (Math.random() < 0.5) this._applyEventDamage(self, owner, 1);
+          else if (self) { self.shields = (self.shields || 0) + 1; this.addLog(self.name + " +1 scudo"); }
+        } else if (id === "ev_discard1_heal_all_2") {
+          if (owner.hand.length) {
+            const idx = Math.floor(Math.random() * owner.hand.length);
+            const c = owner.hand.splice(idx, 1)[0];
+            owner.graveyard.push(c);
+            this.addLog("Offerta: scarta " + c.name);
+          }
+          owner.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 2; });
+          this.addLog("Alleati +2 PV");
+        } else {
+          this.addLog("Evento " + id + " (effetto parziale)");
+        }
+        break;
+      default:
+        this.addLog("Evento non gestito: " + id);
+    }
+    if (ev.name && owner.passives) {
+      owner.passives.push(ev.name);
+      if (owner.passives.length > 8) owner.passives.shift();
+    }
   }
 
   _applyTerrainEvent(ev, unit, owner) {
@@ -1535,6 +1881,10 @@ class GameState {
   startMostrissimoSacrifice(ms) {
     const e = this.currentEntity;
     if (!e || !e.isHuman || this.phase !== "playing") return false;
+    if ((this.mostrissimiSummonedThisTurn || 0) >= 1) {
+      this.addLog("Puoi evocare al massimo 1 Mostrissimo per turno.");
+      return false;
+    }
     if (this.sacrificeMode || this.playMode || this.moveMode || this.attachMode) {
       this.addLog("Termina l'azione in corso prima di evocare un Mostrissimo.");
       return false;

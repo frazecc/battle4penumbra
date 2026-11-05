@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "024";
+const APP_VERSION = "025";
 
 let game = null;
 let currentScreen = "auth";
@@ -1049,3 +1049,33 @@ window.onGameEnd = function(g) {
     }
   });
 };
+
+
+window.onEventChoicePrompt = function(pending) {
+  const modal = document.getElementById("event-choice-modal");
+  const box = document.getElementById("event-choice-options");
+  if (!modal || !box || !pending) return;
+  box.innerHTML = "";
+  pending.options.forEach(opt => {
+    const btn = document.createElement("button");
+    btn.className = "btn btn-primary";
+    btn.style.width = "100%";
+    btn.textContent = opt.label || opt.type;
+    btn.onclick = () => {
+      modal.style.display = "none";
+      modal.classList.add("hidden");
+      if (game && typeof game.resolvePendingEventChoice === "function") {
+        game.resolvePendingEventChoice(opt.type);
+      }
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+      if (game && !game.currentEntity.isHuman && game.phase === "playing") {
+        setTimeout(() => game.runAITurn(), 700);
+      }
+    };
+    box.appendChild(btn);
+  });
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+

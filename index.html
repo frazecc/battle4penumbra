@@ -43,7 +43,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v024</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v025</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -170,5 +170,14 @@
       <button id="btn-back-to-home" class="btn btn-primary" style="width:100%;">Torna alla Home</button>
     </div>
   </div>
+
+<div id="event-choice-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:1002;">
+  <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:16px;padding:28px;max-width:440px;width:92%;">
+    <h2 style="color:var(--accent);margin-bottom:8px;font-size:1.2rem;">Il tuo destino ti attende...</h2>
+    <p style="color:var(--text-dim);margin-bottom:16px;">dove succederà?</p>
+    <div id="event-choice-options" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
 </body>
 </html>

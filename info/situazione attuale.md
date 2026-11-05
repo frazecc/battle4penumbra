@@ -16,23 +16,19 @@ Non si toccano parti del codice non richieste dalla consegna corrente
 Alla fine di ogni lavoro si consegna la sottocartella pronta
 e il file situazione attuale aggiornato.
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 024 – VERSION: v024
-NEW – Effetti di Uscita (leave) sulle creature
-Aggiunto campo leaveEffectId sulle carte che hanno testo "Uscita:"
-• m06 Guardiano d'Avorio → leave_heal_ally_2
-(cura +2 PV all'alleato con meno PV rimanenti)
-• m07 Furia Cremisi → leave_damage_attacker_1
-(1 danno all'attaccante se presente nel contesto di combattimento)
-_destroyUnit(unit, ctx) ora:
-rimuove l'unità dal campo
-gestisce il ritorno dell'Artefatto
-risolve leaveEffectId tramite _resolveLeaveEffect
-Il combattimento non fa più la rimozione "inline":
-usa sempre _destroyUnit, così Uscita scatta anche in combattimento
-(e nei sacrifici Mostrissimi, maledizioni, danni da effetti, ecc.)
-NOTE
-Se non c'è attaccante (es. sacrificio Mostrissimo), leave_damage_attacker_1
-non fa danno e logga il motivo.
-Se non ci sono alleati, leave_heal_ally_2 non cura nessuno.
-Le Trappole on_death restano gestite a parte via _checkTraps.
-FILE: js/game.js, js/data.js, js/app.js, index.html
+BATTLE FOR PENUMBRA – consegna 025 – VERSION: v025
+NEW
+Max 1 Mostrissimo evocabile per proprio turno
+Generazione mappa speciali:
+• esattamente 3 Teletrasporto
+• 1–2 Circoli Rituali
+• 1× ciascuno: Villaggio, Cimitero, Rovine, Santuario, Jungla, Colosseo, Statua, Mercato
+Mazzi eventi (≥10 carte) per ogni tipo tranne Teletrasporto
+(pesca uniforme = rimischio immediato)
+Fine turno:
+flip celle occupate da creature
+risoluzione teletrasporti + passo obbligatorio
+1 evento: se più luoghi, popup
+"Il tuo destino ti attende... dove succederà?"
+File design: tessere_e_mazzi_eventi.txt
+FILE: js/data.js, js/game.js, js/app.js, index.html, tessere_e_mazzi_eventi.txt

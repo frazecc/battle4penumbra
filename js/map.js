@@ -150,7 +150,7 @@ const MapRenderer = {
       const card = this.game.selectedCard;
       const e = this.game.currentEntity;
       const t = (card.type || "").toLowerCase();
-      const legal = [];
+      let legal = [];
 
       if (t === "mostro" && e && e.templeKey) {
         const [tq, tr] = e.templeKey.split(",").map(Number);
@@ -158,11 +158,9 @@ const MapRenderer = {
           legal.push([tq, tr]);
         }
       } else if (t === "mostrissimo") {
-        for (const [key, type] of CELL_TYPE) {
-          if (type === "temple" || type === "city" || type === "circolo") {
-            const [q, r] = key.split(",").map(Number);
-            if (!this.game.getUnitAt(q, r)) legal.push([q, r]);
-          }
+        // v023: usa la funzione dedicata (Tempio + celle sbloccate dai sacrifici)
+        if (typeof this.game.getMostrissimoLegalCells === "function") {
+          legal = this.game.getMostrissimoLegalCells();
         }
       }
 
@@ -176,7 +174,24 @@ const MapRenderer = {
         this._pulseScheduled = true;
         requestAnimationFrame(() => {
           this._pulseScheduled = false;
-          if (this.game?.playMode || this.game?.moveMode) this.render();
+          if (this.game?.playMode || this.game?.moveMode || this.game?.sacrificeMode) this.render();
+        });
+      }
+    }
+
+    // In modalità Sacrificio Mostrissimo: evidenzia le proprie creature sacrificabili (rosso/arancio)
+    if (this.game?.sacrificeMode && this.game.currentEntity) {
+      for (const u of this.game.currentEntity.field) {
+        if (u.type === "mostro" || u.type === "mostrissimo") {
+          this._highlightHex(u.q, u.r, "#FF7043");
+          this._fillHexSoft(u.q, u.r, "rgba(255, 112, 67, " + pulse + ")");
+        }
+      }
+      if (!this._pulseScheduled) {
+        this._pulseScheduled = true;
+        requestAnimationFrame(() => {
+          this._pulseScheduled = false;
+          if (this.game?.sacrificeMode) this.render();
         });
       }
     }
@@ -481,6 +496,21 @@ const MapRenderer = {
       let suppressPreview = false;
 
       if (this.game.phase === "playing") {
+        // 0) Modalità Sacrificio Mostrissimo: clic su creatura propria → sacrifica
+        if (this.game.sacrificeMode) {
+          const human = this.game.entities.find(e => e.isHuman);
+          if (human && this.game.currentEntity && this.game.currentEntity.isHuman) {
+            const unit = human.field.find(u => u.q === q && u.r === r);
+            if (unit) {
+              this.game.sacrificeUnitForMostrissimo(unit);
+              if (typeof closeCardDetail === "function") closeCardDetail();
+              if (window.onGameUpdate) window.onGameUpdate();
+              this.render();
+              return;
+            }
+          }
+        }
+
         // 1) Giocare una carta sulla cella
         if (this.game.playMode && this.game.selectedCard) {
           this.game.playCardOnHex(q, r);
@@ -538,7 +568,7 @@ const MapRenderer = {
         if (!suppressPreview) {
           const human = this.game.entities.find(e => e.isHuman);
           if (human && this.game.currentEntity && this.game.currentEntity.isHuman &&
-              !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode) {
+              !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode && !this.game.sacrificeMode) {
             const unit = human.field.find(u => u.q === q && u.r === r);
             if (unit) {
               this.game.selectedUnit = unit;
@@ -555,7 +585,7 @@ const MapRenderer = {
 
       // 6) Dettagli creatura (alleata o nemica visibile) — mai durante un'azione
       if (suppressPreview) return;
-      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode;
+      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode || this.game.sacrificeMode;
       if (!inActionMode) {
         const anyUnit = this.game.getUnitAt(q, r);
         if (anyUnit) {

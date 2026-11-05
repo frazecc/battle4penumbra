@@ -84,6 +84,13 @@ class GameState {
     this.flippedCells = new Set();
     this.frozenVisibility = null; // Set di "q,r" visibili al momento della sconfitta umana (per Guarda mappa)
 
+    // --- Modalità Sacrificio Mostrissimo (v023) ---
+    this.sacrificeMode = false;
+    this.sacrificeCard = null;          // carta Mostrissimo in fase di evocazione
+    this.sacrificeCount = 0;
+    this.sacrificeNeeded = 0;
+    this.sacrificedPositions = new Set(); // chiavi "q,r" di Altare/Circolo sbloccati dai sacrifici
+
     this._initEntities();
     this._assignTemples();
     this._initMostrissimiPool();
@@ -263,18 +270,18 @@ class GameState {
     }
 
     if (t === "mostrissimo") {
-      // Serve almeno un posto valido (tempio / altare / circolo) libero + sacrifici
+      // v023: i Mostrissimi si evocano solo dal pool con flusso sacrificio interattivo.
+      // Qui controlliamo solo se ci sono abbastanza permanenti da sacrificare
+      // e se il proprio tempio è libero (casella sempre legale).
       const sac = card.sacrifice || 0;
       const permanents = entity.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
       if (permanents.length < sac) return false;
-      // Cerca almeno una cella valida libera
-      for (const [key, type] of CELL_TYPE) {
-        if (type === "temple" || type === "city" || type === "circolo") {
-          const [q, r] = key.split(",").map(Number);
-          if (!this.getUnitAt(q, r)) return true;
-        }
-      }
-      return false;
+      if (!entity.templeKey) return false;
+      const [tq, tr] = entity.templeKey.split(",").map(Number);
+      // Il tempio deve essere libero OPPURE abbiamo abbastanza creature (potremmo sbloccare altare/circolo)
+      // Per semplicità: se il tempio è libero OK; se no, serve almeno 1 permanente (che potrebbe stare su altare/circolo)
+      if (!this.getUnitAt(tq, tr)) return true;
+      return permanents.length > 0; // potrebbe sbloccare altre celle via sacrificio
     }
 
     if (t === "artefatto") {
@@ -518,29 +525,18 @@ class GameState {
           return false;
         }
       }
-      // MOSTRISSIMO: Altare o Tempio
+      // MOSTRISSIMO (v023): solo Tempio proprio, oppure Altare/Circolo sbloccati dai sacrifici
       if (card.type === "mostrissimo") {
-        const cellType = CELL_TYPE.get(q + "," + r);
-        if (cellType !== "city" && cellType !== "temple" && cellType !== "circolo") {
-          this.addLog("I Mostrissimi si evocano solo su Altare, Tempio o Circolo Rituale!");
-          return false;
-        }
-        const sac = card.sacrifice || 0;
-        const permanents = e.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
-        if (permanents.length < sac) {
-          this.addLog("Servono " + sac + " permanenti da sacrificare!");
+        const key = q + "," + r;
+        const isOwnTemple = e.templeKey === key;
+        const isUnlockedSpecial = this.sacrificedPositions && this.sacrificedPositions.has(key);
+        if (!isOwnTemple && !isUnlockedSpecial) {
+          this.addLog("Casella non legale per questo Mostrissimo! Solo il tuo Tempio, o Altare/Circolo su cui hai sacrificato.");
           return false;
         }
       }
       e.pay(cost);
-      if (card.type === "mostrissimo" && (card.sacrifice || 0) > 0) {
-        const toSac = e.field.slice(0, card.sacrifice);
-        toSac.forEach(u => {
-          e.field = e.field.filter(x => x.instanceId !== u.instanceId);
-          e.graveyard.push(u);
-          this.addLog("Sacrificato: " + u.name);
-        });
-      }
+      // I sacrifici sono già stati fatti in sacrificeMode: non si sacrificano più qui.
       e.hand = e.hand.filter(c => c.instanceId !== card.instanceId);
       const unit = {
         ...card,
@@ -563,6 +559,12 @@ class GameState {
       this._resolveETB(unit, e);
       this.selectedCard = null;
       this.playMode = false;
+      // Pulisci stato sacrificio Mostrissimo
+      this.sacrificeMode = false;
+      this.sacrificeCard = null;
+      this.sacrificeCount = 0;
+      this.sacrificeNeeded = 0;
+      this.sacrificedPositions = new Set();
       return true;
     }
 
@@ -1480,13 +1482,136 @@ class GameState {
     return res;
   }
 
+  // =====================================================
+  // MOSTRISSIMI – flusso sacrificio interattivo (v023)
+  // =====================================================
+
+  /** Avvia la procedura di evocazione di un Mostrissimo dal pool */
+  startMostrissimoSacrifice(ms) {
+    const e = this.currentEntity;
+    if (!e || !e.isHuman || this.phase !== "playing") return false;
+    if (this.sacrificeMode || this.playMode || this.moveMode || this.attachMode) {
+      this.addLog("Termina l'azione in corso prima di evocare un Mostrissimo.");
+      return false;
+    }
+
+    const sac = ms.sacrifice || 0;
+    const permanents = e.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
+    if (permanents.length < sac) {
+      this.addLog("Non hai abbastanza creature da sacrificare (servono " + sac + ").");
+      return false;
+    }
+
+    // Copia carta pronta per il piazzamento
+    const card = { ...ms, instanceId: (ms.instanceId || ms.id) + "_sum_" + Date.now() };
+
+    // Caso 0 sacrifici → vai diretto in modalità piazzamento
+    if (sac === 0) {
+      this.selectedCard = card;
+      this.playMode = true;
+      this.sacrificeMode = false;
+      this.sacrificeCard = null;
+      this.sacrificeCount = 0;
+      this.sacrificeNeeded = 0;
+      this.sacrificedPositions = new Set();
+      this.addLog("Selezionato " + card.name + " (0 sacrifici). Clicca il tuo Tempio per evocarlo.");
+      return true;
+    }
+
+    // Entra in modalità sacrificio
+    this.sacrificeMode = true;
+    this.sacrificeCard = card;
+    this.sacrificeCount = 0;
+    this.sacrificeNeeded = sac;
+    this.sacrificedPositions = new Set();
+    this.selectedCard = null;
+    this.playMode = false;
+    this.moveMode = false;
+    this.attachMode = false;
+    this.selectedUnit = null;
+    this.addLog("Evocazione " + card.name + ": sacrifica esattamente " + sac + " creature. Clicca le tue unità.");
+    return true;
+  }
+
+  /** Sacrifica una creatura durante la modalità sacrificio Mostrissimo */
+  sacrificeUnitForMostrissimo(unit) {
+    if (!this.sacrificeMode || !this.sacrificeCard) return false;
+    const e = this.currentEntity;
+    if (!e || !unit || unit.ownerId !== e.id) return false;
+    if (unit.type !== "mostro" && unit.type !== "mostrissimo") {
+      this.addLog("Puoi sacrificare solo mostri o mostrissimi.");
+      return false;
+    }
+    if (this.sacrificeCount >= this.sacrificeNeeded) return false;
+
+    const key = unit.q + "," + unit.r;
+    const cellType = CELL_TYPE.get(key);
+
+    // Distruggi la creatura (effetti on-death/uscita se implementati passano da _destroyUnit)
+    this._destroyUnit(unit);
+    this.addLog("Sacrificato: " + unit.name + " su (" + unit.q + "," + unit.r + ")");
+
+    // Se stava su Altare o Circolo, sblocca quella cella
+    if (cellType === "city" || cellType === "circolo") {
+      this.sacrificedPositions.add(key);
+      this.addLog("Cella speciale sbloccata: " + (cellType === "city" ? "Altare" : "Circolo Rituale") + " (" + key + ")");
+    }
+
+    this.sacrificeCount++;
+
+    if (this.sacrificeCount >= this.sacrificeNeeded) {
+      // Passa in modalità piazzamento
+      this.selectedCard = this.sacrificeCard;
+      this.playMode = true;
+      this.sacrificeMode = false;
+      this.addLog("Sacrifici completati (" + this.sacrificeNeeded + "). Scegli dove evocare " + this.sacrificeCard.name + ".");
+    }
+    return true;
+  }
+
+  /** Annulla completamente la procedura di evocazione Mostrissimo */
+  cancelSacrificeMode() {
+    if (!this.sacrificeMode && !(this.playMode && this.selectedCard && this.selectedCard.type === "mostrissimo")) {
+      return false;
+    }
+    this.sacrificeMode = false;
+    this.sacrificeCard = null;
+    this.sacrificeCount = 0;
+    this.sacrificeNeeded = 0;
+    this.sacrificedPositions = new Set();
+    this.selectedCard = null;
+    this.playMode = false;
+    this.addLog("Evocazione Mostrissimo annullata.");
+    return true;
+  }
+
+  /** Restituisce le caselle legali per il Mostrissimo attualmente selezionato */
+  getMostrissimoLegalCells() {
+    const e = this.currentEntity;
+    if (!e || !this.selectedCard || this.selectedCard.type !== "mostrissimo") return [];
+    const legal = [];
+
+    // 1) Sempre il proprio Tempio (se libero)
+    if (e.templeKey) {
+      const [tq, tr] = e.templeKey.split(",").map(Number);
+      if (!this.getUnitAt(tq, tr)) legal.push([tq, tr]);
+    }
+
+    // 2) Celle speciali sbloccate dai sacrifici (se ancora libere)
+    if (this.sacrificedPositions) {
+      for (const key of this.sacrificedPositions) {
+        const [q, r] = key.split(",").map(Number);
+        if (!this.getUnitAt(q, r)) legal.push([q, r]);
+      }
+    }
+    return legal;
+  }
+
   summonMostrissimo(poolIndex, q, r) {
+    // Mantenuto per compatibilità; il flusso principale passa da startMostrissimoSacrifice
     if (poolIndex < 0 || poolIndex >= this.mostrissimiPool.length) return false;
     const ms = this.mostrissimiPool[poolIndex];
-    const card = { ...ms, instanceId: ms.instanceId + "_sum_" + Date.now() };
-    this.selectedCard = card;
-    this.playMode = true;
-    return this.playCardOnHex(q, r);
+    return this.startMostrissimoSacrifice(ms);
   }
 }
 

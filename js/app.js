@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "022";
+const APP_VERSION = "023";
 
 let game = null;
 let currentScreen = "auth";
@@ -621,13 +621,18 @@ function renderMostrissimi() {
       "<div class=\"meta\">Sac " + m.sacrifice + " • " + m.atk + "/" + m.hp + "</div>" +
       "<div class=\"meta\" style=\"font-size:0.7rem;\">" + (m.effect||"").substring(0,40) + "...</div>";
     div.onclick = () => {
-      if (!game.currentEntity.isHuman) return;
-      game.addLog("Selezionato Mostrissimo: " + m.name + ". Clicca Altare/Tempio/Circolo (servono " + m.sacrifice + " sacrifici).");
-      game.selectedCard = { ...m, instanceId: m.instanceId + "_sum_" + Date.now() };
-      game.playMode = true;
+      if (!game.currentEntity || !game.currentEntity.isHuman) return;
+      if (typeof game.startMostrissimoSacrifice === "function") {
+        game.startMostrissimoSacrifice(m);
+      } else {
+        // fallback
+        game.selectedCard = { ...m, instanceId: (m.instanceId || m.id) + "_sum_" + Date.now() };
+        game.playMode = true;
+      }
       game.moveMode = false;
       game.selectedUnit = null;
       if (window.onGameUpdate) window.onGameUpdate();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
     };
     el.appendChild(div);
   });
@@ -839,7 +844,23 @@ function renderGameState() {
 
   const btnCancel = document.getElementById("btn-cancel-action");
   if (btnCancel) {
-    btnCancel.style.display = (game.playMode || game.moveMode) ? "inline-block" : "none";
+    btnCancel.style.display = (game.playMode || game.moveMode || game.sacrificeMode || game.attachMode) ? "inline-block" : "none";
+  }
+
+  // Contatore sacrifici Mostrissimo (v023)
+  let sacBar = document.getElementById("sacrifice-counter");
+  if (game.sacrificeMode && game.sacrificeCard) {
+    if (!sacBar) {
+      sacBar = document.createElement("div");
+      sacBar.id = "sacrifice-counter";
+      sacBar.style.cssText = "position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:50;background:rgba(20,12,8,0.92);border:1px solid #FF7043;color:#FFCCBC;padding:8px 18px;border-radius:10px;font-weight:700;font-size:0.95rem;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,0.5);";
+      const topbar = document.querySelector(".game-topbar") || document.getElementById("screen-game");
+      if (topbar) topbar.appendChild(sacBar);
+    }
+    sacBar.style.display = "block";
+    sacBar.textContent = "Sacrificati: " + game.sacrificeCount + " / " + game.sacrificeNeeded + "  —  " + (game.sacrificeCard.name || "Mostrissimo");
+  } else if (sacBar) {
+    sacBar.style.display = "none";
   }
 
   const handEl = document.getElementById("game-hand");
@@ -918,12 +939,16 @@ document.getElementById("btn-end-turn")?.addEventListener("click", () => {
 
 document.getElementById("btn-cancel-action")?.addEventListener("click", () => {
   if (!game) return;
+  if (game.sacrificeMode || (game.playMode && game.selectedCard && game.selectedCard.type === "mostrissimo")) {
+    if (typeof game.cancelSacrificeMode === "function") game.cancelSacrificeMode();
+  }
   game.selectedCard = null;
   game.selectedUnit = null;
   game.playMode = false;
   game.moveMode = false;
   game.attachMode = false;
   game.targetMode = null;
+  game.sacrificeMode = false;
   renderGameState();
   if (typeof MapRenderer !== "undefined") MapRenderer.render();
 });

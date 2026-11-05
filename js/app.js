@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "020";
+const APP_VERSION = "021";
 
 let game = null;
 let currentScreen = "auth";
@@ -12,7 +12,245 @@ let currentScreen = "auth";
 document.addEventListener("DOMContentLoaded", () => {
   const el = document.getElementById("app-version");
   if (el) el.textContent = "v" + APP_VERSION;
+  ensureSettingsButton();
 });
+
+// =====================================================
+// IMPOSTAZIONI UTENTE (per username)
+// =====================================================
+const DEFAULT_SETTINGS = {
+  autoHoCapito: false,
+  audio: true,
+  animations: true,
+  antiEpilessia: false
+};
+
+function settingsKey() {
+  try {
+    const u = (typeof getCurrentUser === "function" && getCurrentUser()) ||
+              (typeof getSession === "function" && getSession());
+    const name = u && u.username ? u.username : "guest";
+    return "bfp_settings_" + name;
+  } catch (e) {
+    return "bfp_settings_guest";
+  }
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(settingsKey());
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch (e) {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings(s) {
+  try {
+    localStorage.setItem(settingsKey(), JSON.stringify(s));
+  } catch (e) {}
+}
+
+let userSettings = loadSettings();
+
+function ensureSettingsButton() {
+  if (document.getElementById("btn-settings-gear")) return;
+  const btn = document.createElement("button");
+  btn.id = "btn-settings-gear";
+  btn.title = "Impostazioni";
+  btn.innerHTML = "⚙️";
+  btn.style.cssText = "position:fixed;top:12px;right:12px;z-index:3000;width:42px;height:42px;border-radius:50%;border:1px solid #2A3A4A;background:#0D1B2A;color:#FFD54F;font-size:1.2rem;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,0.4);";
+  btn.onclick = () => openSettingsPanel();
+  document.body.appendChild(btn);
+}
+
+function openSettingsPanel() {
+  let panel = document.getElementById("settings-panel");
+  if (panel) {
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+    return;
+  }
+  userSettings = loadSettings();
+  panel = document.createElement("div");
+  panel.id = "settings-panel";
+  panel.style.cssText = "position:fixed;top:60px;right:12px;z-index:3001;width:280px;background:#0D1B2A;border:1px solid #2A3A4A;border-radius:12px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,0.5);font-size:0.9rem;color:#E0D6C8;";
+  panel.innerHTML = `
+    <div style="font-weight:700;color:#FFD54F;margin-bottom:12px;">Impostazioni</div>
+    <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer;">
+      <span>Auto-ho-capito</span>
+      <input type="checkbox" id="set-auto-hocapito" ${userSettings.autoHoCapito ? "checked" : ""}>
+    </label>
+    <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer;">
+      <span>Audio</span>
+      <input type="checkbox" id="set-audio" ${userSettings.audio ? "checked" : ""}>
+    </label>
+    <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer;">
+      <span>Animazioni</span>
+      <input type="checkbox" id="set-animations" ${userSettings.animations ? "checked" : ""}>
+    </label>
+    <label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;cursor:pointer;">
+      <span>Anti-epilessia</span>
+      <input type="checkbox" id="set-antiepi" ${userSettings.antiEpilessia ? "checked" : ""}>
+    </label>
+    <div style="font-size:0.75rem;color:#6B7A8A;margin-top:8px;">Le preferenze sono salvate per il tuo utente.</div>
+    <button class="btn" style="width:100%;margin-top:12px;" id="set-close">Chiudi</button>
+  `;
+  document.body.appendChild(panel);
+  const bind = (id, key) => {
+    document.getElementById(id).onchange = (e) => {
+      userSettings[key] = e.target.checked;
+      saveSettings(userSettings);
+      if (key === "antiEpilessia") {
+        document.body.classList.toggle("anti-epilessia", userSettings.antiEpilessia);
+      }
+    };
+  };
+  bind("set-auto-hocapito", "autoHoCapito");
+  bind("set-audio", "audio");
+  bind("set-animations", "animations");
+  bind("set-antiepi", "antiEpilessia");
+  document.getElementById("set-close").onclick = () => { panel.style.display = "none"; };
+  if (userSettings.antiEpilessia) document.body.classList.add("anti-epilessia");
+}
+
+// =====================================================
+// SISTEMA POPUP AZIONI (coda a schermo intero)
+// =====================================================
+const popupQueue = [];
+let popupShowing = false;
+let popupMapPeek = false; // true = utente sta guardando la mappa
+
+function enqueueGamePopup(message, opts) {
+  opts = opts || {};
+  // Non accodare se messaggio vuoto
+  if (!message || !String(message).trim()) return;
+  popupQueue.push({
+    message: String(message),
+    buttonLabel: opts.buttonLabel || "Ho capito",
+    allowMap: opts.allowMap !== false,
+    autoSkippable: opts.autoSkippable !== false,
+    playerLabel: opts.playerLabel || null
+  });
+  processPopupQueue();
+}
+window.enqueueGamePopup = enqueueGamePopup;
+
+function waitForPopups() {
+  return new Promise(resolve => {
+    const t = setInterval(() => {
+      if (popupQueue.length === 0 && !popupShowing && !popupMapPeek) {
+        clearInterval(t);
+        resolve();
+      }
+    }, 80);
+  });
+}
+window.waitForPopups = waitForPopups;
+
+function processPopupQueue() {
+  if (popupShowing || popupMapPeek) return;
+  if (popupQueue.length === 0) return;
+  const item = popupQueue.shift();
+  showActionPopup(item);
+}
+
+function showActionPopup(item) {
+  popupShowing = true;
+  // Rimuovi overlay precedente
+  let overlay = document.getElementById("action-popup-overlay");
+  if (overlay) overlay.remove();
+
+  overlay = document.createElement("div");
+  overlay.id = "action-popup-overlay";
+  const anim = userSettings.animations && !userSettings.antiEpilessia;
+  overlay.style.cssText = `
+    position:fixed;inset:0;z-index:2500;
+    background:rgba(0,0,0,0.92);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;
+    text-align:center;padding:28px;
+    font-family:Georgia,serif;
+    opacity:0;transition:opacity ${anim ? "0.35s" : "0s"} ease;
+  `;
+
+  const playerHtml = item.playerLabel
+    ? `<div style="color:#FFD54F;font-size:1rem;margin-bottom:12px;letter-spacing:0.04em;">${item.playerLabel}</div>`
+    : "";
+
+  overlay.innerHTML = `
+    ${playerHtml}
+    <div id="action-popup-msg" style="max-width:560px;color:#E0D6C8;font-size:1.25rem;line-height:1.65;margin-bottom:28px;letter-spacing:0.02em;">
+      ${item.message}
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+      <button id="action-popup-ok" class="btn btn-primary" style="padding:12px 32px;font-size:1.05rem;">
+        ${item.buttonLabel}
+      </button>
+      ${item.allowMap ? '<button id="action-popup-map" class="btn" style="padding:12px 24px;font-size:1.05rem;">Guarda mappa</button>' : ""}
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  // fade in
+  requestAnimationFrame(() => { overlay.style.opacity = "1"; });
+
+  const closePopup = () => {
+    if (anim) {
+      overlay.style.opacity = "0";
+      setTimeout(() => {
+        overlay.remove();
+        popupShowing = false;
+        processPopupQueue();
+      }, 320);
+    } else {
+      overlay.remove();
+      popupShowing = false;
+      processPopupQueue();
+    }
+  };
+
+  document.getElementById("action-popup-ok").onclick = closePopup;
+
+  const mapBtn = document.getElementById("action-popup-map");
+  if (mapBtn) {
+    mapBtn.onclick = () => {
+      // Metti l'item in testa alla coda e chiudi temporaneamente
+      popupQueue.unshift(item);
+      overlay.remove();
+      popupShowing = false;
+      popupMapPeek = true;
+      showMapPeekBar();
+    };
+  }
+
+  // Auto-ho-capito: mostra ~0.8s poi chiude (solo se skippable)
+  userSettings = loadSettings();
+  if (userSettings.autoHoCapito && item.autoSkippable) {
+    setTimeout(() => {
+      if (document.getElementById("action-popup-overlay") === overlay) {
+        closePopup();
+      }
+    }, 800);
+  }
+}
+
+function showMapPeekBar() {
+  let bar = document.getElementById("map-peek-bar");
+  if (bar) bar.remove();
+  bar = document.createElement("div");
+  bar.id = "map-peek-bar";
+  bar.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2600;background:#0D1B2A;border:1px solid #FFD54F;border-radius:12px;padding:12px 20px;display:flex;gap:12px;align-items:center;box-shadow:0 4px 20px rgba(0,0,0,0.5);";
+  bar.innerHTML = `
+    <span style="color:#E0D6C8;font-size:0.95rem;">Stai guardando la mappa</span>
+    <button id="map-peek-return" class="btn btn-primary" style="padding:8px 18px;">Torna al messaggio</button>
+  `;
+  document.body.appendChild(bar);
+  document.getElementById("map-peek-return").onclick = () => {
+    bar.remove();
+    popupMapPeek = false;
+    processPopupQueue();
+  };
+}
 
 function showScreen(id) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
@@ -168,39 +406,18 @@ document.getElementById("btn-back-home")?.addEventListener("click", () => showSc
 let humanDraftPicksDone = 0; // 0, 1, 2, 3
 
 function showDraftAtmosphere(message, onContinue) {
-  let overlay = document.getElementById("draft-atmosphere-overlay");
-  if (overlay) overlay.remove();
-
-  overlay = document.createElement("div");
-  overlay.id = "draft-atmosphere-overlay";
-  overlay.style.cssText = `
-    position: fixed; inset: 0; z-index: 2000;
-    background: rgba(0,0,0,0.93);
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    text-align: center; padding: 24px;
-    font-family: Georgia, serif;
-  `;
-
-  overlay.innerHTML = `
-    <div style="max-width:520px; color:#E0D6C8; font-size:1.4rem; line-height:1.65; margin-bottom:36px; letter-spacing:0.03em;">
-      ${message}
-    </div>
-    <button id="draft-ho-capito" class="btn btn-primary" style="padding:12px 36px; font-size:1.1rem;">
-      Ho capito
-    </button>
-  `;
-
-  document.body.appendChild(overlay);
-
   const container = document.getElementById("packs-container");
   if (container) container.style.visibility = "hidden";
-
-  document.getElementById("draft-ho-capito").onclick = () => {
-    overlay.remove();
+  // Usa il sistema popup unificato
+  enqueueGamePopup(message, {
+    buttonLabel: "Ho capito",
+    allowMap: false,
+    autoSkippable: true
+  });
+  waitForPopups().then(() => {
     if (container) container.style.visibility = "visible";
     if (typeof onContinue === "function") onContinue();
-  };
+  });
 }
 
 function renderDraft() {
@@ -731,17 +948,7 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 window.onGameEnd = function(g) {
-  const modal = document.getElementById("endgame-modal");
-  const title = document.getElementById("endgame-title");
-  const msg = document.getElementById("endgame-msg");
-  if (!modal) {
-    console.error("endgame-modal non trovato");
-    return;
-  }
-  modal.classList.remove("hidden");
-  modal.style.display = "flex";
-
-  // Disabilita subito qualsiasi interazione di gioco
+  // Disabilita interazioni
   if (g) {
     g.selectedCard = null;
     g.selectedUnit = null;
@@ -751,58 +958,69 @@ window.onGameEnd = function(g) {
     g.targetMode = null;
   }
 
-  if (g.winner) {
+  let endTitle = "Hai perso";
+  let endMsg = (g && g.loseReason) || "Il tuo Artefatto non era più sul campo a fine turno.";
+  if (g && g.winner) {
     if (g.winner.isHuman) {
-      title.textContent = "Vittoria!";
-      title.style.color = "var(--accent)";
-      msg.textContent = "Hai sconfitto tutte le altre entità e hai mantenuto l'Artefatto!";
+      endTitle = "Vittoria!";
+      endMsg = "Hai sconfitto tutte le altre entità e hai mantenuto l'Artefatto!";
     } else {
-      title.textContent = "Sconfitta";
-      title.style.color = "var(--danger)";
-      msg.textContent = (g.winner.name || "Un avversario") + " ha vinto la partita." + (g.loseReason ? " (" + g.loseReason + ")" : "");
+      endTitle = "Sconfitta";
+      endMsg = (g.winner.name || "Un avversario") + " ha vinto la partita." + (g.loseReason ? " (" + g.loseReason + ")" : "");
     }
-  } else {
-    // Caso tipico: l'umano è diventato Caduto
-    title.textContent = "Hai perso";
-    title.style.color = "var(--danger)";
-    msg.textContent = g.loseReason || "Il tuo Artefatto non era più sul campo a fine turno.";
   }
 
-  // Collega i bottoni ORA (quando il modal è visibile) – evita listener persi
-  const btnHome = document.getElementById("btn-back-to-home");
-  const btnMap = document.getElementById("btn-view-map");
-  if (btnHome) {
-    btnHome.onclick = function() {
-      modal.classList.add("hidden");
-      modal.style.display = "none";
-      const bar = document.getElementById("postgame-bar");
-      if (bar) bar.remove();
-      game = null;
-      showScreen("home");
-    };
-  }
-  if (btnMap) {
-    btnMap.onclick = function() {
-      modal.classList.add("hidden");
-      modal.style.display = "none";
-      // Ridisegna con la fog congelata (frozenVisibility già impostata in game.js)
-      if (typeof renderGameState === "function") renderGameState();
-      if (typeof MapRenderer !== "undefined") MapRenderer.render();
-      let bar = document.getElementById("postgame-bar");
-      if (!bar) {
-        bar = document.createElement("div");
-        bar.id = "postgame-bar";
-        bar.style.cssText = "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:998;display:flex;gap:10px;background:rgba(13,27,42,0.95);border:1px solid #2A3A4A;border-radius:12px;padding:10px 16px;";
-        bar.innerHTML = '<button id="btn-postgame-home" class="btn btn-primary">Torna alla Home</button>';
-        document.body.appendChild(bar);
-        document.getElementById("btn-postgame-home").onclick = function() {
-          bar.remove();
-          game = null;
-          showScreen("home");
-        };
-      }
-      if (game) game.addLog("Mappa congelata al momento della sconfitta. Nessuna informazione extra.");
-      if (typeof renderGameState === "function") renderGameState();
-    };
-  }
+  // Popup unificato — NON auto-skippabile
+  enqueueGamePopup("<strong style='font-size:1.5rem;color:#FFD54F;'>" + endTitle + "</strong><br><br>" + endMsg, {
+    buttonLabel: "Accetto il giudizio",
+    allowMap: true,
+    autoSkippable: false
+  });
+
+  // Dopo il giudizio, mostra le opzioni home / mappa
+  waitForPopups().then(() => {
+    const modal = document.getElementById("endgame-modal");
+    const title = document.getElementById("endgame-title");
+    const msg = document.getElementById("endgame-msg");
+    if (!modal) return;
+    modal.classList.remove("hidden");
+    modal.style.display = "flex";
+    if (title) title.textContent = endTitle;
+    if (msg) msg.textContent = endMsg;
+
+    const btnHome = document.getElementById("btn-back-to-home");
+    const btnMap = document.getElementById("btn-view-map");
+    if (btnHome) {
+      btnHome.onclick = function() {
+        modal.classList.add("hidden");
+        modal.style.display = "none";
+        const bar = document.getElementById("postgame-bar");
+        if (bar) bar.remove();
+        game = null;
+        showScreen("home");
+      };
+    }
+    if (btnMap) {
+      btnMap.onclick = function() {
+        modal.classList.add("hidden");
+        modal.style.display = "none";
+        if (typeof renderGameState === "function") renderGameState();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
+        let bar = document.getElementById("postgame-bar");
+        if (!bar) {
+          bar = document.createElement("div");
+          bar.id = "postgame-bar";
+          bar.style.cssText = "position:fixed;bottom:12px;left:50%;transform:translateX(-50%);z-index:998;display:flex;gap:10px;background:rgba(13,27,42,0.95);border:1px solid #2A3A4A;border-radius:12px;padding:10px 16px;";
+          bar.innerHTML = '<button id="btn-postgame-home" class="btn btn-primary">Torna alla Home</button>';
+          document.body.appendChild(bar);
+          document.getElementById("btn-postgame-home").onclick = function() {
+            bar.remove();
+            game = null;
+            showScreen("home");
+          };
+        }
+        if (typeof renderGameState === "function") renderGameState();
+      };
+    }
+  });
 };

@@ -185,9 +185,23 @@ class GameState {
     };
     this.log.push(entry);
     if (this.log.length > 600) this.log.shift();
-    // Anche in console browser per debug
     if (important) console.log("%c" + entry.msg, "color:#FFD54F");
     else console.log(entry.msg);
+
+    // Popup per ogni azione di gioco (poi filtriamo). Esclude solo messaggi tecnici interni.
+    const technical = typeof msg === "string" && (msg.startsWith("(") || msg.includes("ignorato") || msg.includes("timeout IA"));
+    if (!technical && typeof window !== "undefined" && typeof window.enqueueGamePopup === "function") {
+      const cur = this.currentEntity;
+      const playerLabel = cur
+        ? ((cur.templeIcon || "") + " " + cur.name).trim()
+        : null;
+      window.enqueueGamePopup(entry.msg, {
+        important,
+        playerLabel,
+        autoSkippable: true,
+        allowMap: true
+      });
+    }
   }
 
   _revealAround(entity, q, r, radius = 2) {
@@ -1318,8 +1332,11 @@ class GameState {
     if (ai.isFallen) {
       this._runFallenTurn(ai);
       if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
-      this._aiEndTurnTimeout = setTimeout(() => {
+      this._aiEndTurnTimeout = setTimeout(async () => {
         this._aiEndTurnTimeout = null;
+        if (typeof window !== "undefined" && window.waitForPopups) {
+          await window.waitForPopups();
+        }
         if (this.currentEntity && this.currentEntity.isHuman) {
           this.addLog("(timeout IA caduta ignorato: è il turno dell'umano)");
           if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
@@ -1329,9 +1346,9 @@ class GameState {
         if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
         if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
         else if (!this.currentEntity.isHuman && this.phase === "playing") {
-          setTimeout(() => this.runAITurn(), 500);
+          setTimeout(() => this.runAITurn(), 400);
         }
-      }, 600);
+      }, 500);
       return;
     }
     this.addLog(ai.name + " sta pensando...");
@@ -1417,8 +1434,12 @@ class GameState {
     }
     // Salva il timeout così possiamo annullarlo se il turno diventa umano
     if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
-    this._aiEndTurnTimeout = setTimeout(() => {
+    this._aiEndTurnTimeout = setTimeout(async () => {
       this._aiEndTurnTimeout = null;
+      // Aspetta che l'utente abbia chiuso tutti i popup
+      if (typeof window !== "undefined" && window.waitForPopups) {
+        await window.waitForPopups();
+      }
       // Sicurezza: non chiudere mai il turno di un umano da qui
       if (this.currentEntity && this.currentEntity.isHuman) {
         this.addLog("(timeout IA ignorato: è il turno dell'umano)");
@@ -1429,9 +1450,9 @@ class GameState {
       if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
       if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
       else if (!this.currentEntity.isHuman && this.phase === "playing") {
-        setTimeout(() => this.runAITurn(), 600);
+        setTimeout(() => this.runAITurn(), 400);
       }
-    }, 800);
+    }, 500);
   }
 
   _findPlacementHex(entity) {

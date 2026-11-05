@@ -32,3 +32,7 @@ risoluzione teletrasporti + passo obbligatorio
 "Il tuo destino ti attende... dove succederà?"
 File design: tessere_e_mazzi_eventi.txt
 FILE: js/data.js, js/game.js, js/app.js, index.html, tessere_e_mazzi_eventi.txt
+HOTFIX
+data.js: ripristinati ALL_CARDS / MOSTRISSIMI (erano stati persi nella sostituzione zone)
+EVENT_DECKS + generateSpecialZones integrati correttamente
+================================================================================

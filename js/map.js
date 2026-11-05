@@ -20,7 +20,11 @@ const MapRenderer = {
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext("2d");
     this.game = gameState;
-    this._bindEvents();
+    // Bind eventi una sola volta (evita listener multipli tra una partita e l'altra)
+    if (!this._eventsBound) {
+      this._bindEvents();
+      this._eventsBound = true;
+    }
     this.center();
     this.render();
   },
@@ -110,13 +114,50 @@ const MapRenderer = {
       }
     }
 
-    // Highlight selected
+    // Highlight selected unit
     if (this.game?.selectedUnit) {
       this._highlightHex(this.game.selectedUnit.q, this.game.selectedUnit.r, "#FFD54F");
     }
+
+    // In modalità Muovi: evidenzia le caselle legali (adiacenti libere, non montagna)
+    if (this.game?.moveMode && this.game.selectedUnit && !this.game.selectedUnit.isWithered) {
+      const u = this.game.selectedUnit;
+      const dirs = [[1,0], [0,1], [-1,1], [-1,0], [0,-1], [1,-1]];
+      for (const [dq, dr] of dirs) {
+        const nq = u.q + dq;
+        const nr = u.r + dr;
+        const key = nq + "," + nr;
+        if (!CELL_TYPE.has(key)) continue;
+        if (CELL_TYPE.get(key) === "mountain") continue;
+        if (this.game.getUnitAt(nq, nr)) continue;
+        this._highlightHex(nq, nr, "#69F0AE");
+        // Riempimento leggero
+        this._fillHexSoft(nq, nr, "rgba(105, 240, 174, 0.25)");
+      }
+    }
+
     if (this.hoverHex) {
       this._highlightHex(this.hoverHex.q, this.hoverHex.r, "#4FC3F7");
     }
+  },
+
+  _fillHexSoft(q, r, color) {
+    const { x, y } = this.axialToPixel(q, r);
+    const cx = x * this.scale + this.offsetX;
+    const cy = y * this.scale + this.offsetY;
+    const s = this.size * this.scale;
+    const ctx = this.ctx;
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const angle = Math.PI / 180 * (60 * i - 30);
+      const vx = cx + s * Math.cos(angle);
+      const vy = cy + s * Math.sin(angle);
+      if (i === 0) ctx.moveTo(vx, vy);
+      else ctx.lineTo(vx, vy);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
   },
 
   _drawHex(q, r, type, visible) {
@@ -367,55 +408,63 @@ const MapRenderer = {
 
     c.addEventListener("click", e => {
       if (!this.game) return;
-      // Permetti click in playing e in ended (per guardare dettagli dopo sconfitta)
       if (this.game.phase !== "playing" && this.game.phase !== "ended") return;
       const rect = c.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const { q, r } = this.pixelToAxial(mx, my);
-
       if (!CELL_TYPE.has(`${q},${r}`)) return;
 
-      // Azioni di gioco solo in fase playing
+      // Flag: questo click non deve MAI aprire l'anteprima (dopo attach/move)
+      let suppressPreview = false;
+
       if (this.game.phase === "playing") {
-        // Play card mode
+        // 1) Giocare una carta sulla cella
         if (this.game.playMode && this.game.selectedCard) {
-          const ok = this.game.playCardOnHex(q, r);
-          if (ok && window.onGameUpdate) window.onGameUpdate();
+          this.game.playCardOnHex(q, r);
+          if (typeof closeCardDetail === "function") closeCardDetail();
+          if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
         }
 
-        // Move / Attack mode – priorità assoluta, non deve mai aprire l'anteprima
+        // 2) Modalità Muovi / Attacca
         if (this.game.moveMode && this.game.selectedUnit) {
           this.game.tryMoveOrAttack(q, r);
-          // Chiudi eventuali anteprime aperte e non riaprirle in questo click
           if (typeof closeCardDetail === "function") closeCardDetail();
           this.game.selectedUnit = null;
           this.game.moveMode = false;
+          suppressPreview = true;
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
-          return; // SEMPRE return: questo click non deve aprire nessuna anteprima
+          return;
         }
 
-        // Target mode (maledizioni)
+        // 3) Bersaglio maledizione
         if (this.game.targetMode) {
           const anyUnit = this.game.getUnitAt(q, r);
           if (anyUnit) {
             this.game.selectTargetUnit(anyUnit);
+            if (typeof closeCardDetail === "function") closeCardDetail();
             if (window.onGameUpdate) window.onGameUpdate();
             this.render();
             return;
           }
         }
 
-        // Attach Artefatto a creatura propria
+        // 4) Lega Artefatto — SOLO attach, niente anteprima
         if (this.game.attachMode && this.game.selectedCard && this.game.selectedCard.type === "artefatto") {
           const human = this.game.entities.find(e => e.isHuman);
           if (human) {
             const unit = human.field.find(u => u.q === q && u.r === r);
             if (unit) {
               this.game.attachArtifactToUnit(unit.instanceId);
+              this.game.selectedUnit = null;
+              this.game.moveMode = false;
+              this.game.attachMode = false;
+              this.game.selectedCard = null;
+              if (typeof closeCardDetail === "function") closeCardDetail();
+              suppressPreview = true;
               if (window.onGameUpdate) window.onGameUpdate();
               this.render();
               return;
@@ -423,28 +472,27 @@ const MapRenderer = {
           }
         }
 
-        // Click su creatura propria: mostra SOLO l'anteprima (non entra in modalità Muovi)
-        const human = this.game.entities.find(e => e.isHuman);
-        if (human && this.game.currentEntity.isHuman && !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode) {
-          const unit = human.field.find(u => u.q === q && u.r === r);
-          if (unit) {
-            // Seleziona la creatura ma NON attivare moveMode
-            this.game.selectedUnit = unit;
-            this.game.selectedCard = null;
-            this.game.moveMode = false;
-            this.game.playMode = false;
-            this.game.attachMode = false;
-            this.game.targetMode = null;
-            if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
-            if (window.onGameUpdate) window.onGameUpdate();
-            this.render();
-            return;
+        // 5) Click su creatura propria → SOLO anteprima (mai moveMode)
+        if (!suppressPreview) {
+          const human = this.game.entities.find(e => e.isHuman);
+          if (human && this.game.currentEntity && this.game.currentEntity.isHuman &&
+              !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode) {
+            const unit = human.field.find(u => u.q === q && u.r === r);
+            if (unit) {
+              this.game.selectedUnit = unit;
+              this.game.selectedCard = null;
+              this.game.moveMode = false;
+              if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
+              if (window.onGameUpdate) window.onGameUpdate();
+              this.render();
+              return;
+            }
           }
         }
       }
 
-      // Dettagli creature: solo se NON siamo in una modalità di azione (move/play/attach/target)
-      // e solo se la partita è playing o ended
+      // 6) Dettagli creatura (alleata o nemica visibile) — mai durante un'azione
+      if (suppressPreview) return;
       const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode;
       if (!inActionMode) {
         const anyUnit = this.game.getUnitAt(q, r);

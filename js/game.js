@@ -604,12 +604,15 @@ class GameState {
     e.pay(cost);
     e.hand = e.hand.filter(c => c.instanceId !== this.selectedCard.instanceId);
     e.artifactAttachedTo = unit.instanceId;
-    // Marca la creatura
     unit.hasArtifact = true;
     this.addLog(e.name + " lega l'Artefatto a " + unit.name + "!", true);
+    // Pulisci TUTTO lo stato di selezione: non aprire anteprima né moveMode
     this.selectedCard = null;
+    this.selectedUnit = null;
     this.attachMode = false;
     this.playMode = false;
+    this.moveMode = false;
+    this.targetMode = null;
     return true;
   }
 
@@ -624,7 +627,7 @@ class GameState {
     this.moveMode = true;
     this.targetMode = null;
     const free = !unit.movedThisTurn;
-    this.addLog("Selezionato " + unit.name + " in (" + unit.q + "," + unit.r + "). moveMode=true. Clicca cella adiacente" + (free ? " (primo passo gratuito)" : " (1 mana)") + (unit.isWithered ? " — AVVIZZITA, non può agire" : "") + ".");
+    this.addLog("Modalità Muovi: " + unit.name + " in (" + unit.q + "," + unit.r + "). Caselle verdi = destinazioni legali" + (free ? " (primo passo gratuito)" : " (1 mana)") + (unit.isWithered ? " — AVVIZZITA, non può agire" : "") + ". Usa Annulla per uscire.");
   }
 
   isCellDiscovered(q, r, entity) {
@@ -1197,13 +1200,39 @@ class GameState {
     if (a.includes("hp3")) unit.currentHp = (unit.currentHp || 0) + 3;
     else if (a.includes("hp2")) unit.currentHp = (unit.currentHp || 0) + 2;
     if (a.includes("shield1")) unit.shields = (unit.shields || 0) + 1;
-    if (a.includes("dmg2")) this._applyDamage(unit, 2);
-    else if (a.includes("dmg1")) this._applyDamage(unit, 1);
-    // Passiva vicino al nome
+    // Danni da evento: l'Artefatto protegge il portatore dalla morte
+    if (a.includes("dmg2")) this._applyEventDamage(unit, owner, 2);
+    else if (a.includes("dmg1")) this._applyEventDamage(unit, owner, 1);
     if (ev.passive && owner) {
       owner.passives.push(ev.name + ": " + ev.passive);
       if (owner.passives.length > 8) owner.passives.shift();
     }
+  }
+
+  /** Danno da evento di zona: non può uccidere il portatore dell'Artefatto */
+  _applyEventDamage(unit, owner, amount) {
+    if (!unit) return;
+    let dmg = amount;
+    if (unit.shields > 0) {
+      const abs = Math.min(unit.shields, dmg);
+      unit.shields -= abs;
+      dmg -= abs;
+    }
+    if (dmg <= 0) return;
+
+    const holdsArtifact = owner && owner.artifactAttachedTo === unit.instanceId;
+    const wouldDie = (unit.currentHp || 1) - dmg <= 0;
+
+    if (holdsArtifact && wouldDie) {
+      // L'Artefatto assorbe il colpo mortale: la creatura resta a 1 PV
+      unit.currentHp = 1;
+      this.addLog("✨ L'Artefatto protegge " + unit.name + " dal destino: il colpo viene assorbito (resta a 1 PV).", true);
+      return;
+    }
+
+    unit.currentHp = (unit.currentHp || 1) - dmg;
+    this.addLog(unit.name + " subisce " + dmg + " danni → " + unit.currentHp + " PV");
+    if (unit.currentHp <= 0) this._destroyUnit(unit);
   }
 
   _checkWin() {

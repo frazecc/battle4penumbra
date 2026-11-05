@@ -43,7 +43,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v025</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v026</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -176,6 +176,18 @@
     <h2 style="color:var(--accent);margin-bottom:8px;font-size:1.2rem;">Il tuo destino ti attende...</h2>
     <p style="color:var(--text-dim);margin-bottom:16px;">dove succederà?</p>
     <div id="event-choice-options" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+
+<div id="teleport-step-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);display:none;align-items:flex-start;justify-content:center;padding-top:48px;z-index:1003;pointer-events:none;">
+  <div style="background:var(--bg2);border:1px solid #64FFDA;border-radius:14px;padding:18px 22px;max-width:420px;width:90%;pointer-events:none;box-shadow:0 8px 28px rgba(0,0,0,0.45);">
+    <h2 style="color:#64FFDA;margin:0 0 8px;font-size:1.1rem;">Teletrasporto</h2>
+    <p style="margin:0;line-height:1.5;color:var(--text-dim);">
+      <strong id="teleport-step-unit" style="color:var(--text);">La creatura</strong> è uscita da un portale.
+      Devi compiere <strong style="color:var(--text);">un passo obbligatorio gratuito</strong> su una casella evidenziata in verde acqua.
+      Clicca direttamente sulla mappa.
+    </p>
   </div>
 </div>
 

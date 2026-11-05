@@ -94,7 +94,10 @@ class GameState {
     // v025
     this.mostrissimiSummonedThisTurn = 0;
     this.pendingEventChoice = null; // { options: [{type,key,label}], entityId }
+    this.pendingTeleportSteps = []; // coda passi obbligatori post-TP
+    this.pendingTeleportStep = null; // { unitInstanceId, entityId, q, r, legal: [[q,r],...] }
     this.specialZones = {};
+    this._endTurnEntityId = null; // entità che sta chiudendo il turno (async TP/eventi)
 
     this._initEntities();
     this._assignTemples();
@@ -1197,27 +1200,47 @@ class GameState {
         }
       });
 
-      // 2) Risolvi teletrasporti (non si può restare su TP)
-      this._resolveTeleportsForEntity(current);
-
-      // 3) Fase eventi: 1 solo evento, scelto tra i tipi di tessera speciale occupati (no TP)
-      const options = this._collectEventOptions(current);
-      if (options.length === 1) {
-        this._drawAndResolveEvent(current, options[0]);
-      } else if (options.length > 1) {
-        if (current.isHuman) {
-          this.pendingEventChoice = { options, entityId: current.id };
-          if (typeof window !== "undefined" && window.onEventChoicePrompt) {
-            window.onEventChoicePrompt(this.pendingEventChoice);
-          }
-          // Il turno prosegue dopo la scelta (resolvePendingEventChoice)
-          return;
-        } else {
-          const pick = options[Math.floor(Math.random() * options.length)];
-          this._drawAndResolveEvent(current, pick);
-        }
+      // 2) Teletrasporti: sposta sui portali, poi passo obbligatorio (manuale per umano)
+      this._endTurnEntityId = current.id;
+      const needStep = this._resolveTeleportsForEntity(current);
+      if (needStep) {
+        // In attesa di completeTeleportStep (umano) oppure già risolto in coda (IA)
+        return;
       }
+
+      // 3) Eventi
+      if (this._runEndTurnEvents(current)) return; // in attesa scelta evento umana
     }
+    this._finishEndTurn(current);
+  }
+
+  /** Ritorna true se resta in attesa di input umano (scelta evento) */
+  _runEndTurnEvents(current) {
+    const options = this._collectEventOptions(current);
+    if (options.length === 1) {
+      this._drawAndResolveEvent(current, options[0]);
+      return false;
+    }
+    if (options.length > 1) {
+      if (current.isHuman) {
+        this.pendingEventChoice = { options, entityId: current.id };
+        if (typeof window !== "undefined" && window.onEventChoicePrompt) {
+          window.onEventChoicePrompt(this.pendingEventChoice);
+        }
+        return true;
+      }
+      const pick = options[Math.floor(Math.random() * options.length)];
+      this._drawAndResolveEvent(current, pick);
+    }
+    return false;
+  }
+
+  /** Dopo l'ultimo passo TP obbligatorio → eventi → fine turno */
+  _continueAfterTeleportSteps() {
+    const current = this.getEntityById(this._endTurnEntityId) || this.currentEntity;
+    this.pendingTeleportStep = null;
+    this.pendingTeleportSteps = [];
+    if (this._runEndTurnEvents(current)) return;
     this._finishEndTurn(current);
   }
 
@@ -1318,14 +1341,18 @@ class GameState {
     this._resolveTileEvent(ev, unit, entity);
   }
 
+  /**
+   * Sposta le unità sui teletrasporti e prepara i passi obbligatori.
+   * @returns {boolean} true se resta in attesa di input umano per un passo
+   */
   _resolveTeleportsForEntity(entity) {
     const tpKeys = [];
     for (const [key, type] of CELL_TYPE) {
       if (type === "teletrasporto") tpKeys.push(key);
     }
-    if (tpKeys.length < 2) return;
+    if (tpKeys.length < 2) return false;
 
-    // Copia lista unità: il campo può cambiare durante lo spostamento
+    const steps = [];
     const units = entity.field.slice();
     for (const u of units) {
       const key = u.q + "," + u.r;
@@ -1335,9 +1362,10 @@ class GameState {
       const destKey = others[Math.floor(Math.random() * others.length)];
       const [dq, dr] = destKey.split(",").map(Number);
       this.flippedCells.add(destKey);
-      // Se occupata, cerca adiacente libera al dest
+
       let tq = dq, tr = dr;
-      if (this.getUnitAt(dq, dr) && !(this.getUnitAt(dq, dr).instanceId === u.instanceId)) {
+      const occupant = this.getUnitAt(dq, dr);
+      if (occupant && occupant.instanceId !== u.instanceId) {
         const adj = this._hexesInRange(dq, dr, 1);
         const free = adj.find(([aq, ar]) => !this.getUnitAt(aq, ar) && CELL_TYPE.get(aq + "," + ar) !== "mountain");
         if (free) { tq = free[0]; tr = free[1]; }
@@ -1350,24 +1378,95 @@ class GameState {
       this.addLog("🌀 " + u.name + " teletrasportato su (" + tq + "," + tr + ")", true);
       this._revealAround(entity, tq, tr, 2);
 
-      // Passo obbligatorio gratuito fuori dal TP
+      // Se è ancora su un TP (caso normale), serve passo obbligatorio
       if (CELL_TYPE.get(tq + "," + tr) === "teletrasporto") {
-        const stepAdj = this._hexesInRange(tq, tr, 1);
-        const legal = stepAdj.filter(([aq, ar]) => {
-          if (this.getUnitAt(aq, ar)) return false;
-          const ct = CELL_TYPE.get(aq + "," + ar);
-          if (ct === "mountain" || ct === "teletrasporto") return false;
-          return true;
-        });
-        if (legal.length) {
-          const [sq, sr] = legal[Math.floor(Math.random() * legal.length)];
-          u.q = sq; u.r = sr;
-          this.flippedCells.add(sq + "," + sr);
-          this.addLog(u.name + " compie il passo obbligatorio su (" + sq + "," + sr + ")");
-          this._revealAround(entity, sq, sr, 2);
+        const legal = this._legalTeleportExitSteps(tq, tr);
+        if (!legal.length) {
+          this.addLog(u.name + ": nessuna casella libera per uscire dal teletrasporto!");
+          continue;
         }
+        steps.push({
+          unitInstanceId: u.instanceId,
+          entityId: entity.id,
+          q: tq,
+          r: tr,
+          legal
+        });
       }
     }
+
+    if (!steps.length) return false;
+
+    // IA: esegue tutti i passi in automatico
+    if (!entity.isHuman) {
+      for (const step of steps) {
+        const [sq, sr] = step.legal[Math.floor(Math.random() * step.legal.length)];
+        this._applyTeleportStep(step, sq, sr);
+      }
+      return false;
+    }
+
+    // Umano: coda + primo passo in attesa
+    this.pendingTeleportSteps = steps.slice(1);
+    this.pendingTeleportStep = steps[0];
+    this.addLog("Devi compiere un passo obbligatorio (gratuito) fuori dal teletrasporto con " +
+      (entity.field.find(x => x.instanceId === steps[0].unitInstanceId) || {}).name +
+      ". Clicca una casella evidenziata.", true);
+    if (typeof window !== "undefined" && window.onTeleportStepPrompt) {
+      window.onTeleportStepPrompt(this.pendingTeleportStep);
+    }
+    return true;
+  }
+
+  _legalTeleportExitSteps(q, r) {
+    const stepAdj = this._hexesInRange(q, r, 1);
+    return stepAdj.filter(([aq, ar]) => {
+      if (this.getUnitAt(aq, ar)) return false;
+      const ct = CELL_TYPE.get(aq + "," + ar);
+      if (!ct || ct === "mountain" || ct === "teletrasporto") return false;
+      return true;
+    });
+  }
+
+  _applyTeleportStep(step, sq, sr) {
+    const ent = this.getEntityById(step.entityId);
+    if (!ent) return false;
+    const unit = ent.field.find(u => u.instanceId === step.unitInstanceId);
+    if (!unit) return false;
+    const ok = step.legal.some(([lq, lr]) => lq === sq && lr === sr);
+    if (!ok) return false;
+    unit.q = sq; unit.r = sr;
+    this.flippedCells.add(sq + "," + sr);
+    this.addLog(unit.name + " esce dal teletrasporto su (" + sq + "," + sr + ")", true);
+    this._revealAround(ent, sq, sr, 2);
+    return true;
+  }
+
+  /** Click umano su casella di uscita dal TP */
+  completeTeleportStep(q, r) {
+    if (!this.pendingTeleportStep) return false;
+    const step = this.pendingTeleportStep;
+    if (!this._applyTeleportStep(step, q, r)) {
+      this.addLog("Casella non valida per l'uscita dal teletrasporto.");
+      return false;
+    }
+    // Prossimo in coda
+    if (this.pendingTeleportSteps.length) {
+      this.pendingTeleportStep = this.pendingTeleportSteps.shift();
+      const ent = this.getEntityById(this.pendingTeleportStep.entityId);
+      const unit = ent && ent.field.find(u => u.instanceId === this.pendingTeleportStep.unitInstanceId);
+      this.addLog("Altro passo obbligatorio: " + ((unit && unit.name) || "creatura") + ". Clicca una casella evidenziata.", true);
+      if (typeof window !== "undefined" && window.onTeleportStepPrompt) {
+        window.onTeleportStepPrompt(this.pendingTeleportStep);
+      }
+      return true;
+    }
+    // Fine passi TP → eventi / chiusura turno
+    if (typeof window !== "undefined" && window.onTeleportStepDone) {
+      window.onTeleportStepDone();
+    }
+    this._continueAfterTeleportSteps();
+    return true;
   }
 
   _resolveTileEvent(ev, unit, owner) {

@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "025";
+const APP_VERSION = "026";
 
 let game = null;
 let currentScreen = "auth";
@@ -1077,5 +1077,28 @@ window.onEventChoicePrompt = function(pending) {
   });
   modal.classList.remove("hidden");
   modal.style.display = "flex";
+};
+
+
+
+window.onTeleportStepPrompt = function(step) {
+  const modal = document.getElementById("teleport-step-modal");
+  if (!modal) return;
+  const nameEl = document.getElementById("teleport-step-unit");
+  if (nameEl && game) {
+    const ent = game.getEntityById(step.entityId);
+    const unit = ent && ent.field.find(u => u.instanceId === step.unitInstanceId);
+    nameEl.textContent = unit ? unit.name : "la creatura";
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+  if (typeof MapRenderer !== "undefined") MapRenderer.render();
+};
+window.onTeleportStepDone = function() {
+  const modal = document.getElementById("teleport-step-modal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.style.display = "none";
+  }
 };
 

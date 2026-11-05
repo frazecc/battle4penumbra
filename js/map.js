@@ -196,7 +196,26 @@ const MapRenderer = {
       }
     }
 
-    // Attach Artefatto: evidenzia le proprie creature
+    
+    // Passo obbligatorio post-teletrasporto: caselle di uscita legali (verde acqua)
+    if (this.game?.pendingTeleportStep && this.game.pendingTeleportStep.legal) {
+      for (const [q, r] of this.game.pendingTeleportStep.legal) {
+        this._highlightHex(q, r, "#64FFDA");
+        this._fillHexSoft(q, r, "rgba(100, 255, 218, " + pulse + ")");
+      }
+      // evidenzia anche l'unità bloccata sul TP
+      const st = this.game.pendingTeleportStep;
+      this._highlightHex(st.q, st.r, "#FFD54F");
+      if (!this._pulseScheduled) {
+        this._pulseScheduled = true;
+        requestAnimationFrame(() => {
+          this._pulseScheduled = false;
+          if (this.game?.pendingTeleportStep) this.render();
+        });
+      }
+    }
+
+// Attach Artefatto: evidenzia le proprie creature
     if (this.game?.attachMode && this.game.currentEntity) {
       for (const u of this.game.currentEntity.field) {
         if (u.type === "mostro" || u.type === "mostrissimo" || u.id === "token_free") {
@@ -496,6 +515,15 @@ const MapRenderer = {
       let suppressPreview = false;
 
       if (this.game.phase === "playing") {
+        // 0a) Passo obbligatorio post-teletrasporto
+        if (this.game.pendingTeleportStep) {
+          this.game.completeTeleportStep(q, r);
+          if (typeof closeCardDetail === "function") closeCardDetail();
+          if (window.onGameUpdate) window.onGameUpdate();
+          this.render();
+          return;
+        }
+
         // 0) Modalità Sacrificio Mostrissimo: clic su creatura propria → sacrifica
         if (this.game.sacrificeMode) {
           const human = this.game.entities.find(e => e.isHuman);
@@ -585,7 +613,7 @@ const MapRenderer = {
 
       // 6) Dettagli creatura (alleata o nemica visibile) — mai durante un'azione
       if (suppressPreview) return;
-      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode || this.game.sacrificeMode;
+      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode || this.game.sacrificeMode || this.game.pendingTeleportStep;
       if (!inActionMode) {
         const anyUnit = this.game.getUnitAt(q, r);
         if (anyUnit) {

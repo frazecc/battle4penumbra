@@ -43,7 +43,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v029</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v030</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -228,6 +228,16 @@
     <h2 id="card-pick-title" style="color:var(--accent);margin:0 0 8px;font-size:1.15rem;">Scegli una carta</h2>
     <p style="color:var(--text-dim);margin:0 0 12px;font-size:0.9rem;">Clic per scegliere. Tasto destro per i dettagli.</p>
     <div id="card-pick-options"></div>
+  </div>
+</div>
+
+
+<div id="event-detail-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);display:none;align-items:center;justify-content:center;z-index:1015;">
+  <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:16px;padding:24px;max-width:480px;width:92%;max-height:90vh;overflow:auto;">
+    <h2 id="event-detail-title" style="color:var(--accent);margin:0 0 12px;font-size:1.2rem;">Evento</h2>
+    <p id="event-detail-narrative" style="line-height:1.55;margin:0 0 18px;color:var(--text);"></p>
+    <p style="margin:0 0 8px;font-size:0.85rem;color:var(--text-dim);">Cosa fai?</p>
+    <div id="event-detail-choices"></div>
   </div>
 </div>
 

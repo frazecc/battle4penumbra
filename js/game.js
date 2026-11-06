@@ -97,6 +97,7 @@ class GameState {
     // v025
     this.mostrissimiSummonedThisTurn = 0;
     this.pendingEventChoice = null; // { options: [{type,key,label}], entityId }
+    this.pendingEventDetail = null; // { event, unitInstanceId, entityId } scelta effetto
     this.pendingTeleportSteps = []; // coda passi obbligatori post-TP
     this.pendingTeleportStep = null; // { unitInstanceId, entityId, q, r, legal: [[q,r],...] }
     this.specialZones = {};
@@ -1363,7 +1364,7 @@ class GameState {
     const options = this._collectEventOptions(current);
     if (options.length === 1) {
       this._drawAndResolveEvent(current, options[0]);
-      return false;
+      return !!this.pendingEventDetail;
     }
     if (options.length > 1) {
       if (current.isHuman) {
@@ -1453,6 +1454,7 @@ class GameState {
     const opt = this.pendingEventChoice.options.find(o => o.type === type);
     this.pendingEventChoice = null;
     if (opt) this._drawAndResolveEvent(current, opt);
+    if (this.pendingEventDetail) return true;
     this._finishEndTurn(current);
     return true;
   }
@@ -1481,8 +1483,56 @@ class GameState {
     // Pesca uniforme = mazzo sempre "rimischiato"
     const ev = deck[Math.floor(Math.random() * deck.length)];
     const unit = option.unit || entity.field.find(u => (u.q + "," + u.r) === option.key) || entity.field[0];
-    this.addLog("📜 [" + type + "] " + ev.name + " — " + (ev.text || ""), true);
+    const narrative = ev.narrative || ev.text || "";
+    this.addLog("📜 [" + type + "] " + ev.name, true);
+
+    // Nuovo formato: narrative + choices[]
+    if (ev.choices && ev.choices.length >= 2) {
+      if (entity.isHuman) {
+        this.pendingEventDetail = {
+          event: ev,
+          unitInstanceId: unit ? unit.instanceId : null,
+          entityId: entity.id,
+          tileType: type
+        };
+        if (typeof window !== "undefined" && window.onEventDetailPrompt) {
+          window.onEventDetailPrompt(this.pendingEventDetail);
+        }
+        return; // attende resolveEventChoice
+      }
+      // IA: scelta casuale
+      const pick = ev.choices[Math.floor(Math.random() * ev.choices.length)];
+      this.addLog(entity.name + " sceglie: " + pick.text);
+      this._resolveTileEvent({ effectId: pick.effectId, name: ev.name }, unit, entity);
+      return;
+    }
+
+    // Retrocompatibilità vecchio formato
+    this.addLog(narrative);
     this._resolveTileEvent(ev, unit, entity);
+  }
+
+  /** Scelta umana tra le opzioni dell'evento pescato */
+  resolveEventChoice(choiceIndex) {
+    if (!this.pendingEventDetail) return false;
+    const pending = this.pendingEventDetail;
+    this.pendingEventDetail = null;
+    const ev = pending.event;
+    const choice = ev.choices && ev.choices[choiceIndex];
+    const entity = this.getEntityById(pending.entityId) || this.currentEntity;
+    const unit = entity.field.find(u => u.instanceId === pending.unitInstanceId) || entity.field[0];
+    if (!choice) {
+      this.addLog("Scelta evento non valida.");
+      return false;
+    }
+    this.addLog("Scelta: " + choice.text, true);
+    this._resolveTileEvent({ effectId: choice.effectId, name: ev.name }, unit, entity);
+    if (!this.pendingCardPick) {
+      this._finishEndTurn(entity);
+    } else {
+      this._endTurnEntityId = entity.id;
+    }
+    return true;
   }
 
   /**
@@ -1611,6 +1661,79 @@ class GameState {
     }
     this._continueAfterTeleportSteps();
     return true;
+  }
+
+
+  _offerColorCardChoice(owner) {
+    const colors = (typeof COLORS !== "undefined") ? COLORS.filter(c => c !== "yellow") : ["white","red","black","blue","green"];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const pool = ALL_CARDS.filter(c => c.color === color && (c.cost || 0) < 6);
+    if (!pool.length) {
+      this.addLog("Nessuna carta disponibile per il colore " + color);
+      return;
+    }
+    const shuffle = [...pool].sort(() => Math.random() - 0.5);
+    const opts = [];
+    for (let i = 0; i < 2 && i < shuffle.length; i++) {
+      opts.push({
+        ...shuffle[i],
+        instanceId: shuffle[i].id + "_evt_" + Date.now() + "_" + i + "_" + Math.random().toString(36).slice(2,5)
+      });
+    }
+    if (opts.length === 1 || !owner.isHuman) {
+      const pick = opts[Math.floor(Math.random() * opts.length)];
+      owner.hand.push(pick);
+      this.addLog(owner.name + " ottiene " + pick.name + " (" + color + ")");
+      return;
+    }
+    this.pendingCardPick = { options: opts, entityId: owner.id, color };
+    this.addLog("Scegli una carta " + ((typeof COLOR_NAMES !== "undefined" && COLOR_NAMES[color]) || color) + " tra le due proposte.", true);
+    if (typeof window !== "undefined" && window.onCardPickPrompt) {
+      window.onCardPickPrompt(this.pendingCardPick);
+    }
+  }
+
+  resolveCardPick(instanceId) {
+    if (!this.pendingCardPick) return false;
+    const owner = this.getEntityById(this.pendingCardPick.entityId);
+    const card = this.pendingCardPick.options.find(c => c.instanceId === instanceId);
+    this.pendingCardPick = null;
+    if (!owner || !card) return false;
+    owner.hand.push(card);
+    this.addLog(owner.name + " aggiunge in mano: " + card.name, true);
+    if (this._endTurnEntityId && !this.pendingEventDetail && !this.pendingEventChoice) {
+      const ent = this.getEntityById(this._endTurnEntityId) || owner;
+      this._finishEndTurn(ent);
+    }
+    return true;
+  }
+
+  _spawnEventToken(owner) {
+    if (!owner.templeKey) {
+      this.addLog("Nessun tempio: token non generato.");
+      return;
+    }
+    const [tq, tr] = owner.templeKey.split(",").map(Number);
+    if (this.getUnitAt(tq, tr)) {
+      this.addLog("Tempio occupato: la recluta non trova spazio.");
+      return;
+    }
+    const base = (typeof FREE_TOKEN !== "undefined") ? FREE_TOKEN : { id: "token_free", name: "Recluta", type: "mostro", atk: 1, hp: 1 };
+    const token = {
+      ...base,
+      instanceId: "evt_token_" + owner.id + "_" + Date.now(),
+      q: tq, r: tr,
+      currentHp: 1,
+      shields: 0,
+      ownerId: owner.id,
+      permanentAtkBonus: 0,
+      movedThisTurn: false,
+      isWithered: false,
+      atk: 1, hp: 1
+    };
+    owner.field.push(token);
+    this._revealAround(owner, tq, tr, 2);
+    this.addLog("Recluta 1/1 evocata sul Tempio di " + owner.name, true);
   }
 
   _resolveTileEvent(ev, unit, owner) {

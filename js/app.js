@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "029";
+const APP_VERSION = "030";
 
 let game = null;
 let currentScreen = "auth";
@@ -1253,3 +1253,38 @@ function importSaveCode() {
 document.getElementById("btn-resume-game")?.addEventListener("click", () => resumeSavedGame());
 document.getElementById("btn-import-save")?.addEventListener("click", () => importSaveCode());
 document.getElementById("btn-export-save")?.addEventListener("click", () => exportSaveCode());
+
+
+window.onEventDetailPrompt = function(pending) {
+  const modal = document.getElementById("event-detail-modal");
+  if (!modal || !pending || !pending.event) return;
+  const ev = pending.event;
+  const title = document.getElementById("event-detail-title");
+  const narr = document.getElementById("event-detail-narrative");
+  const box = document.getElementById("event-detail-choices");
+  if (title) title.textContent = ev.name || "Evento";
+  if (narr) narr.textContent = ev.narrative || ev.text || "";
+  if (box) {
+    box.innerHTML = "";
+    (ev.choices || []).forEach((ch, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "btn btn-primary";
+      btn.style.cssText = "width:100%;text-align:left;margin-bottom:8px;white-space:normal;";
+      btn.textContent = ch.text;
+      btn.onclick = () => {
+        modal.style.display = "none";
+        modal.classList.add("hidden");
+        if (game) game.resolveEventChoice(idx);
+        if (typeof renderGameState === "function") renderGameState();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
+        if (game && game.currentEntity && !game.currentEntity.isHuman && game.phase === "playing") {
+          setTimeout(() => game.runAITurn(), 700);
+        }
+      };
+      box.appendChild(btn);
+    });
+  }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+

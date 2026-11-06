@@ -763,6 +763,57 @@ class GameState {
     return false;
   }
 
+
+  _commitMove(unit, e, q, r, cost) {
+    e.pay(cost || 0);
+    unit.q = Number(q);
+    unit.r = Number(r);
+    unit.movedThisTurn = true;
+    this._revealAround(e, unit.q, unit.r, 2);
+    if (!this.isCellDiscovered(unit.q, unit.r, e)) {
+      unit.isWithered = true;
+      this.addLog(unit.name + " entra in territorio inesplorato e diventa avvizzita.");
+    } else {
+      this.addLog(unit.name + " si muove su (" + unit.q + "," + unit.r + ")" + ((cost || 0) === 0 ? " (primo passo gratuito)" : ""));
+    }
+    this.selectedUnit = null;
+    this.moveMode = false;
+    this.pendingEnemyTempleMove = null;
+    return true;
+  }
+
+  confirmEnemyTempleEntry(yes) {
+    const p = this.pendingEnemyTempleMove;
+    if (!p) return false;
+    const e = this.currentEntity;
+    const unit = e && e.field.find(u => u.instanceId === p.unitInstanceId);
+    this.pendingEnemyTempleMove = null;
+    if (!yes || !unit) {
+      this.addLog("Movimento annullato.");
+      return false;
+    }
+    return this._commitMove(unit, e, p.q, p.r, p.cost || 0);
+  }
+
+  confirmTempleOverwrite(yes) {
+    const p = this.pendingTempleOverwrite;
+    this.pendingTempleOverwrite = null;
+    if (!yes || !p) {
+      this.addLog("Evocazione annullata.");
+      this.selectedCard = null;
+      this.playMode = false;
+      return false;
+    }
+    const victim = this.getUnitAt(p.q, p.r);
+    if (victim && victim.instanceId === p.victimInstanceId) {
+      this._destroyUnit(victim, {});
+      this.addLog("Tempio liberato: " + p.victimName + " distrutto/a.");
+    }
+    this.selectedCard = p.card;
+    this.playMode = true;
+    return this.playCardOnHex(p.q, p.r);
+  }
+
   tryMoveOrAttack(q, r) {
     const e = this.currentEntity;
     if (!this.selectedUnit || !this.moveMode) return false;

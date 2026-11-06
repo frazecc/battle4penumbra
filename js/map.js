@@ -250,6 +250,57 @@ const MapRenderer = {
     }
   },
 
+
+  _drawMovePath(sq, sr, path) {
+    if (!path || !path.length || !this.ctx) return;
+    const ctx = this.ctx;
+    const pts = [];
+    const p0 = this.axialToPixel(sq, sr);
+    pts.push({ x: p0.x * this.scale + this.offsetX, y: p0.y * this.scale + this.offsetY });
+    for (const [q, r] of path) {
+      const p = this.axialToPixel(q, r);
+      pts.push({ x: p.x * this.scale + this.offsetX, y: p.y * this.scale + this.offsetY });
+      this._highlightHex(q, r, "#FFD54F");
+      this._fillHexSoft(q, r, "rgba(255, 213, 79, 0.4)");
+    }
+    ctx.save();
+    ctx.strokeStyle = "#FFD54F";
+    ctx.lineWidth = Math.max(5, 6 * this.scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
+    // Numeri
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i];
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, Math.max(10, 11 * this.scale), 0, Math.PI * 2);
+      ctx.fillStyle = "#FFD54F";
+      ctx.fill();
+      ctx.fillStyle = "#1A1200";
+      ctx.font = "bold " + Math.max(11, 13 * this.scale) + "px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(i), p.x, p.y);
+    }
+    // Freccia
+    if (pts.length >= 2) {
+      const a = pts[pts.length - 2], b = pts[pts.length - 1];
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const size = Math.max(16, 18 * this.scale);
+      ctx.fillStyle = "#FF6F00";
+      ctx.beginPath();
+      ctx.moveTo(b.x + 4 * Math.cos(ang), b.y + 4 * Math.sin(ang));
+      ctx.lineTo(b.x - size * Math.cos(ang - 0.45), b.y - size * Math.sin(ang - 0.45));
+      ctx.lineTo(b.x - size * Math.cos(ang + 0.45), b.y - size * Math.sin(ang + 0.45));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  },
+
   _fillHexSoft(q, r, color) {
     const { x, y } = this.axialToPixel(q, r);
     const cx = x * this.scale + this.offsetX;

@@ -758,8 +758,12 @@ class GameState {
       }
       return false;
     }
-    if (targets.length < need) {
-      this.addLog("Seleziona ancora " + (need - targets.length) + " bersaglio/i.");
+    if (targets.length < 1) {
+      this.addLog("Seleziona almeno un bersaglio.");
+      return false;
+    }
+    if (targets.length > need) {
+      this.addLog("Troppi bersagli.");
       return false;
     }
     const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
@@ -904,22 +908,18 @@ class GameState {
     if (!unit || !entity) return { cells: new Map(), attackTargets: [] };
     const freeFirst = !unit.movedThisTurn;
     const maxSteps = freeFirst ? (entity.mana + 1) : entity.mana;
-    if (maxSteps <= 0 && !freeFirst) return { cells: new Map(), attackTargets: [] };
+    // Caduti: senza mana → 1 solo passo
+    const stepLimit = entity.isFallen ? 1 : maxSteps;
+    if (stepLimit <= 0) return { cells: new Map(), attackTargets: [] };
 
     const dirs = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
-    // key -> { cost, path: [[q,r],...] } cost = mana spent
     const best = new Map();
-    const startKey = unit.q + "," + unit.r;
-    // BFS by steps
-    const queue = [{ q: unit.q, r: unit.r, steps: 0, manaCost: 0, path: [], blocked: false }];
-    best.set(startKey, { cost: 0, path: [], steps: 0 });
-
+    const queue = [{ q: unit.q, r: unit.r, steps: 0, manaCost: 0, path: [] }];
     const attackTargets = [];
 
     while (queue.length) {
       const cur = queue.shift();
-      if (cur.blocked) continue;
-      if (cur.steps >= maxSteps) continue;
+      if (cur.steps >= stepLimit) continue;
       for (const [dq, dr] of dirs) {
         const nq = cur.q + dq, nr = cur.r + dr;
         const key = nq + "," + nr;
@@ -927,36 +927,35 @@ class GameState {
         const ct = CELL_TYPE.get(key);
         if (ct === "mountain") continue;
 
-        const occ = this.getUnitAt(nq, nr);
         const nextSteps = cur.steps + 1;
-        const nextMana = cur.manaCost + (cur.steps === 0 && freeFirst ? 0 : 1);
-        // mana check: if not free first step, need mana; after first free, each costs 1
-        if (!freeFirst && nextMana > entity.mana) continue;
-        if (freeFirst && nextMana > entity.mana) continue;
+        const stepMana = (cur.steps === 0 && freeFirst && !entity.isFallen) ? 0 : 1;
+        const nextMana = entity.isFallen ? 0 : (cur.manaCost + stepMana);
+        if (!entity.isFallen && nextMana > entity.mana) continue;
 
+        const occ = this.getUnitAt(nq, nr);
         if (occ) {
-          if (occ.ownerId !== entity.id && nextSteps === 1) {
-            // attacco solo adiacente (1 passo dal punto di partenza del path corrente = solo se cur is start)
-            // User: combat when contending hex - only adjacent from current position for attack
-            if (cur.steps === 0) {
-              attackTargets.push({ q: nq, r: nr, unit: occ });
-            }
+          if (occ.ownerId !== entity.id && cur.steps === 0) {
+            attackTargets.push({ q: nq, r: nr, unit: occ });
           }
-          continue; // non si attraversa
+          continue;
         }
 
-        const undiscovered = !this.isCellDiscovered(nq, nr, entity);
+        const discovered = this.isCellDiscovered(nq, nr, entity);
+        const visible = typeof this.isVisibleTo === "function" ? this.isVisibleTo(entity, nq, nr) : discovered;
+
+        // Destinazione: può essere non scoperta (termina movimento) se adiacente al path su celle ok
+        // Intermedia: solo scoperte E visibili (no attraversare fog)
         const nextPath = cur.path.concat([[nq, nr]]);
         const prev = best.get(key);
         if (prev && prev.cost <= nextMana && prev.steps <= nextSteps) continue;
         best.set(key, { cost: nextMana, path: nextPath, steps: nextSteps });
-        // Se non scoperta, ci si può fermare qui ma non proseguire oltre
-        if (!undiscovered) {
-          queue.push({ q: nq, r: nr, steps: nextSteps, manaCost: nextMana, path: nextPath, blocked: false });
-        }
+
+        // Non continuare oltre una cella non scoperta o non visibile
+        if (!discovered || !visible) continue;
+        queue.push({ q: nq, r: nr, steps: nextSteps, manaCost: nextMana, path: nextPath });
       }
     }
-    best.delete(startKey);
+    best.delete(unit.q + "," + unit.r);
     return { cells: best, attackTargets };
   }
 

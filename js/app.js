@@ -300,16 +300,16 @@ document.getElementById("btn-show-register")?.addEventListener("click", () => {
   hideAuthError();
 });
 
-document.getElementById("form-login")?.addEventListener("submit", (e) => {
+document.getElementById("form-login")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const res = login(document.getElementById("login-username").value, document.getElementById("login-password").value);
+  const res = await login(document.getElementById("login-username").value, document.getElementById("login-password").value);
   if (res.ok) enterApp(res.user);
   else showAuthError(res.error);
 });
 
-document.getElementById("form-register")?.addEventListener("submit", (e) => {
+document.getElementById("form-register")?.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const res = register(document.getElementById("reg-username").value, document.getElementById("reg-password").value);
+  const res = await register(document.getElementById("reg-username").value, document.getElementById("reg-password").value);
   if (res.ok) enterApp(res.user);
   else showAuthError(res.error);
 });
@@ -347,8 +347,15 @@ function hideAuthError() {
 
 // ---------- HOME & SETUP ----------
 document.getElementById("btn-partita-base")?.addEventListener("click", () => {
-  showScreen("setup");
-  updateSetupSummary();
+  if (typeof offerResumeOrNew === "function") {
+    offerResumeOrNew(() => {
+      showScreen("setup");
+      updateSetupSummary();
+    });
+  } else {
+    showScreen("setup");
+    updateSetupSummary();
+  }
 });
 
 let setupFallen = 0;
@@ -1197,7 +1204,14 @@ function persistGame() {
   if (!game || game.phase === "ended" || game.phase === "setup" || game.phase === "draft") return;
   try {
     const data = game.toSaveData();
+    if (typeof getSession === "function" && getSession()) {
+      data.participants = data.participants || [getSession().username];
+      data.owner = getSession().username;
+    }
     localStorage.setItem(saveGameKey(), JSON.stringify(data));
+    if (typeof cloudSaveGame === "function") {
+      cloudSaveGame(data).catch(err => console.warn("Cloud save", err));
+    }
   } catch (err) {
     console.warn("Salvataggio fallito", err);
   }
@@ -1327,7 +1341,6 @@ window.onMovePathPrompt = function(pending, unit) {
     "<div style='color:#aaa;font-size:0.9rem;'>Destinazione (" + dest[0] + "," + dest[1] + ") · " + pending.path.length + " passi · <strong style='color:#fff'>costo " + (pending.cost||0) + " mana</strong></div>" +
     "<div style='display:flex;gap:8px;flex-wrap:wrap;'>" +
     "<button class='btn btn-primary' id='btn-move-yes'>Conferma</button>" +
-    "<button class='btn' id='btn-move-map'>Vedi mappa</button>" +
     "<button class='btn' id='btn-move-no'>Annulla</button></div>";
   panel.style.display = "flex";
   document.getElementById("btn-move-yes").onclick = function() {
@@ -1340,10 +1353,6 @@ window.onMovePathPrompt = function(pending, unit) {
     panel.style.display = "none";
     if (game) game.confirmMovePath(false);
     if (typeof renderGameState === "function") renderGameState();
-    if (typeof MapRenderer !== "undefined") MapRenderer.render();
-  };
-  document.getElementById("btn-move-map").onclick = function() {
-    panel.style.display = "none";
     if (typeof MapRenderer !== "undefined") MapRenderer.render();
   };
 };
@@ -1366,10 +1375,10 @@ window.onSpellTargetPrompt = function(pending) {
     document.body.appendChild(panel);
   }
   const names = (pending.targets || []).map(function(t) { return t.name; }).join(", ");
-  var canConfirm = pending.selected >= pending.need;
+  var canConfirm = pending.selected >= 1 && pending.selected <= pending.need;
   panel.innerHTML =
     "<div style='font-weight:700;color:#b39ddb;'>" + (pending.card && pending.card.name) + "</div>" +
-    "<div>Bersagli: <strong>" + pending.selected + "/" + pending.need + "</strong> — " + names + "</div>" +
+    "<div>Bersagli: <strong>" + pending.selected + " / fino a " + pending.need + "</strong> — " + names + "</div>" +
     "<div style='display:flex;gap:8px;'>" +
     "<button class='btn btn-primary' id='btn-spell-ok'" + (canConfirm ? "" : " disabled style='opacity:0.5'") + ">Conferma</button>" +
     "<button class='btn' id='btn-spell-cancel'>Annulla</button></div>";
@@ -1388,4 +1397,39 @@ window.onSpellTargetPrompt = function(pending) {
     if (typeof MapRenderer !== "undefined") MapRenderer.render();
   };
 };
+
+
+
+async function offerResumeOrNew(startNewFn) {
+  let data = null;
+  if (typeof cloudLoadGame === "function") data = await cloudLoadGame();
+  if (!data && typeof loadPersistedGame === "function") data = loadPersistedGame();
+  if (!data || data.phase === "ended") {
+    startNewFn();
+    return;
+  }
+  const modal = document.getElementById("resume-modal");
+  if (!modal) { startNewFn(); return; }
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+  const ok = document.getElementById("btn-resume-spoglie");
+  const no = document.getElementById("btn-abandon-frammento");
+  const close = () => { modal.style.display = "none"; modal.classList.add("hidden"); };
+  ok.onclick = () => {
+    close();
+    if (typeof resumeSavedGame === "function") resumeSavedGame();
+    else {
+      game = GameState.fromSaveData(data);
+      window.game = game;
+      startGameUI();
+    }
+  };
+  no.onclick = async () => {
+    close();
+    if (typeof cloudAbandonGame === "function") await cloudAbandonGame();
+    if (typeof clearPersistedGame === "function") clearPersistedGame();
+    startNewFn();
+  };
+}
+
 

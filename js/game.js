@@ -96,6 +96,7 @@ class GameState {
 
     // v025
     this.mostrissimiSummonedThisTurn = 0;
+    this._aiTurnLock = false;
     this.pendingEventChoice = null; // { options: [{type,key,label}], entityId }
     this.pendingEventDetail = null; // { event, unitInstanceId, entityId } scelta effetto
     this.pendingTeleportSteps = []; // coda passi obbligatori post-TP
@@ -1445,6 +1446,25 @@ class GameState {
     this.attachMode = false;
     this.pendingEventChoice = null;
     this.addLog("--- Turno " + this.turnNumber + ": " + nextE.name + " (Mana " + nextE.mana + "/" + nextE.manaMax + ") ---", true);
+    this._scheduleNextActor();
+  }
+
+  /** Dopo chiusura turno async: refresh UI e avvia IA se serve */
+  _scheduleNextActor() {
+    if (typeof window !== "undefined") {
+      if (window.onGameUpdate) window.onGameUpdate();
+      else if (typeof window.renderGameState === "function") window.renderGameState();
+    }
+    if (this.phase === "ended") return;
+    const cur = this.currentEntity;
+    if (cur && !cur.isHuman && this.phase === "playing") {
+      const self = this;
+      setTimeout(() => {
+        if (self.phase === "playing" && self.currentEntity && !self.currentEntity.isHuman) {
+          self.runAITurn();
+        }
+      }, 500);
+    }
   }
 
   /** Continua endTurn dopo eventuale scelta evento umana */
@@ -2051,14 +2071,17 @@ class GameState {
   }
 
   runAITurn() {
+    if (this._aiTurnLock) return;
     const ai = this.currentEntity;
-    if (ai.isHuman || this.phase !== "playing") return;
+    if (!ai || ai.isHuman || this.phase !== "playing") return;
+    this._aiTurnLock = true;
     // CADUTO: solo movimento creature (chase o random)
     if (ai.isFallen) {
       this._runFallenTurn(ai);
       if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
       this._aiEndTurnTimeout = setTimeout(async () => {
         this._aiEndTurnTimeout = null;
+        this._aiTurnLock = false;
         if (typeof window !== "undefined" && window.waitForPopups) {
           await window.waitForPopups();
         }
@@ -2070,7 +2093,7 @@ class GameState {
         this.endTurn();
         if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
         if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
-        else if (!this.currentEntity.isHuman && this.phase === "playing") {
+        else if (this.currentEntity && !this.currentEntity.isHuman && this.phase === "playing") {
           setTimeout(() => this.runAITurn(), 400);
         }
       }, 500);
@@ -2161,11 +2184,10 @@ class GameState {
     if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
     this._aiEndTurnTimeout = setTimeout(async () => {
       this._aiEndTurnTimeout = null;
-      // Aspetta che l'utente abbia chiuso tutti i popup
+      this._aiTurnLock = false;
       if (typeof window !== "undefined" && window.waitForPopups) {
         await window.waitForPopups();
       }
-      // Sicurezza: non chiudere mai il turno di un umano da qui
       if (this.currentEntity && this.currentEntity.isHuman) {
         this.addLog("(timeout IA ignorato: è il turno dell'umano)");
         if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
@@ -2174,7 +2196,7 @@ class GameState {
       this.endTurn();
       if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
       if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
-      else if (!this.currentEntity.isHuman && this.phase === "playing") {
+      else if (this.currentEntity && !this.currentEntity.isHuman && this.phase === "playing") {
         setTimeout(() => this.runAITurn(), 400);
       }
     }, 500);

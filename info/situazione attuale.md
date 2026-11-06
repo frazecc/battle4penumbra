@@ -1,17 +1,14 @@
 ================================================================================
-BATTLE FOR PENUMBRA – REGOLE DI CONSEGNA (ONNIPRESENTI – NON CANCELLABILI)
+BATTLE FOR PENUMBRA – consegna 031 – VERSION: v031
 ================================================================================
-1. Ogni modifica → SOTTOCARTELLA NUOVA.
-2. Aggiornare VERSION e questo file.
-================================================================================
-BATTLE FOR PENUMBRA – consegna 030 – VERSION: v030
-================================================================================
-CHANGE – Eventi narrativi con scelta
-- Ogni evento ha: nome, narrative (frase di ambientazione), choices[] (≥2)
-- Flusso umano: pesca evento → popup con testo narrativo → scegli 1 opzione
-  → applica effectId → fine turno
-- IA: sceglie a caso tra le opzioni
-- 99 eventi aggiornati (9 mazzi × 11)
+FIX – Freeze dopo scelta carta evento
+- Causa: dopo resolveCardPick/_finishEndTurn il turno passava al Tempio Caduto
+  ma nessuno chiamava runAITurn()
+- Aggiunto GameState._scheduleNextActor() chiamato a fine _finishEndTurn
 
-FILE: js/data.js, js/game.js, js/app.js, index.html
+UI – Scelta carte
+- Due carte grandi e leggibili (stats + effetto a vista)
+- Dettaglio carta (tasto destro) z-index 3000, sempre in primo piano
+
+FILE: js/game.js, js/app.js, index.html
 ================================================================================

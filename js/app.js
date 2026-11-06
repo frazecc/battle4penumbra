@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "030";
+const APP_VERSION = "031";
 
 let game = null;
 let currentScreen = "auth";
@@ -673,6 +673,10 @@ function showCardDetail(card, opts) {
   opts = opts || {};
   const modal = document.getElementById("card-detail-modal");
   if (!modal) return;
+  // Sempre in primo piano a schermo intero
+  modal.style.zIndex = "3000";
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
   const nameEl = document.getElementById("card-detail-name");
   const bodyEl = document.getElementById("card-detail-body");
   nameEl.textContent = card.name || "Carta";
@@ -932,9 +936,7 @@ document.getElementById("btn-end-turn")?.addEventListener("click", () => {
   game.endTurn();
   renderGameState();
   if (typeof MapRenderer !== "undefined") MapRenderer.render();
-  if (!game.currentEntity.isHuman && game.phase === "playing") {
-    setTimeout(() => game.runAITurn(), 700);
-  }
+  // L'IA parte da game._scheduleNextActor() a fine _finishEndTurn (sync o async).
 });
 
 document.getElementById("btn-cancel-action")?.addEventListener("click", () => {
@@ -1131,26 +1133,34 @@ window.onCardPickPrompt = function(pending) {
   box.innerHTML = "";
   const title = document.getElementById("card-pick-title");
   if (title) title.textContent = "Scegli una carta (" + ((typeof COLOR_NAMES !== "undefined" && COLOR_NAMES[pending.color]) || pending.color || "?") + ")";
+  box.style.cssText = "display:flex;flex-wrap:wrap;gap:14px;justify-content:center;";
   pending.options.forEach(card => {
-    const btn = document.createElement("button");
-    btn.className = "btn btn-primary";
-    btn.style.cssText = "width:100%;text-align:left;margin-bottom:8px;";
-    btn.innerHTML = "<strong>" + card.name + "</strong><br><span style=\"opacity:0.8;font-size:0.85rem\">" +
-      (card.type || "") + " · costo " + (card.cost || 0) +
-      (card.atk != null ? " · " + card.atk + "/" + card.hp : "") + "</span>";
-    btn.onclick = () => {
+    const atk = card.atk != null ? card.atk : "–";
+    const hp = card.hp != null ? card.hp : "–";
+    const el = document.createElement("div");
+    el.style.cssText = "flex:1 1 180px;max-width:220px;min-height:260px;background:linear-gradient(160deg,#1B2838,#0D1B2A);border:2px solid var(--accent,#FFD54F);border-radius:14px;padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:8px;box-shadow:0 8px 24px rgba(0,0,0,0.4);";
+    el.innerHTML =
+      "<div style=\"font-size:0.75rem;opacity:0.7;text-transform:uppercase;letter-spacing:0.04em;\">" + (card.type || "") + " · " + (card.color || "") + "</div>" +
+      "<div style=\"font-size:1.25rem;font-weight:700;line-height:1.2;color:#FFD54F;\">" + (card.name || "?") + "</div>" +
+      "<div style=\"font-size:1.1rem;margin-top:4px;\">⚡ " + (card.cost || 0) + "</div>" +
+      (card.atk != null ? "<div style=\"font-size:1.35rem;font-weight:700;margin-top:auto;\">⚔ " + atk + " / ❤ " + hp + "</div>" : "<div style=\"margin-top:auto\"></div>") +
+      (card.effect ? "<div style=\"font-size:0.85rem;opacity:0.85;line-height:1.35;margin-top:8px;\">" + card.effect + "</div>" : "") +
+      "<div style=\"font-size:0.75rem;opacity:0.5;margin-top:6px;\">Clic = scegli · Tasto destro = ingrandisci</div>";
+    el.onclick = () => {
       modal.style.display = "none";
       modal.classList.add("hidden");
       if (game) game.resolveCardPick(card.instanceId);
       if (typeof renderGameState === "function") renderGameState();
       if (typeof MapRenderer !== "undefined") MapRenderer.render();
     };
-    btn.oncontextmenu = (e) => {
+    el.oncontextmenu = (e) => {
       e.preventDefault();
+      e.stopPropagation();
       if (typeof showCardDetail === "function") showCardDetail(card, { fromHand: false, readOnly: true });
     };
-    box.appendChild(btn);
+    box.appendChild(el);
   });
+  modal.style.zIndex = "2500";
   modal.classList.remove("hidden");
   modal.style.display = "flex";
 };

@@ -422,8 +422,16 @@ const MapRenderer = {
       } else if (type === "temple") {
         const t = TEMPLES[`${q},${r}`];
         if (t) {
+          // Alone colorato sotto l'icona per visibilità
+          ctx.beginPath();
+          ctx.arc(cx, cy, this.size * this.scale * 0.42, 0, Math.PI * 2);
+          ctx.fillStyle = (t.color || "#FFD54F") + "55";
+          ctx.fill();
+          ctx.strokeStyle = t.color || "#FFD54F";
+          ctx.lineWidth = Math.max(2, 2.5 * this.scale);
+          ctx.stroke();
           ctx.fillStyle = "#FFF";
-          ctx.font = `bold ${Math.max(14, 18 * this.scale)}px Arial`;
+          ctx.font = `${Math.max(22, 28 * this.scale)}px "Segoe UI Emoji","Apple Color Emoji",Arial`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillText(t.icon || t.label, cx, cy);
@@ -503,10 +511,18 @@ const MapRenderer = {
       if (t) tIcon = t.icon || t.label;
     }
     if (tIcon) {
-      ctx.font = `${Math.max(14, 18 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial`;
+      // Badge tempio ben visibile sopra la creatura
+      ctx.beginPath();
+      ctx.arc(cx, cy - radius * 0.55, Math.max(10, 12 * this.scale), 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(13,27,42,0.85)";
+      ctx.fill();
+      ctx.strokeStyle = "#FFD54F";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.font = `${Math.max(16, 20 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(tIcon, cx, cy - radius * 0.5);
+      ctx.fillText(tIcon, cx, cy - radius * 0.55);
     }
     // ATK / PV in basso
     const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
@@ -574,22 +590,38 @@ const MapRenderer = {
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
       const { q, r } = this.pixelToAxial(mx, my);
+      const key = q + "," + r;
+      const type = CELL_TYPE.get(key) || "plain";
       const unit = this.game.getUnitAt(q, r);
-      if (unit && typeof showCardDetail === "function") {
-        const owner = this.game.getEntityById(unit.ownerId);
-        const isOwn = owner && owner.isHuman;
-        showCardDetail(unit, { fromField: !!isOwn, readOnly: !isOwn });
-        return;
+      let name = (this.game.tileDisplayName && this.game.tileDisplayName(type)) || type;
+      let desc = "";
+      if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type] && TILE_TYPE_DEFS[type].desc) {
+        desc = TILE_TYPE_DEFS[type].desc;
       }
-      const type = CELL_TYPE.get(q + "," + r);
-      if (type && typeof showCardDetail === "function") {
-        const name = (this.game.tileDisplayName && this.game.tileDisplayName(type)) || type;
+      if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
+        name = TEMPLES[key].name || name;
+        desc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || desc;
+        desc += " Icona: " + (TEMPLES[key].icon || "") + ".";
+      }
+      let effect = desc || ("Cella: " + name);
+      effect += "\nCoordinate: (" + q + "," + r + ").";
+      if (unit) {
+        const owner = this.game.getEntityById(unit.ownerId);
+        const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
+        effect += "\n\n— Creatura qui —\n" + unit.name + " (" + atk + "/" + (unit.currentHp || unit.hp || 0) + ")";
+        if (owner) effect += "\nProprietario: " + owner.name + (owner.isFallen ? " [CADUTO]" : "");
+        if (unit.isWithered) effect += "\nStato: AVVIZZITA";
+        if (unit.shields) effect += "\nScudi: " + unit.shields;
+      } else {
+        effect += "\n\nNessuna creatura su questa cella.";
+      }
+      if (typeof showCardDetail === "function") {
         showCardDetail({
-          name: name,
-          type: "tessera",
+          name: (TILE_TYPE_DEFS[type] && TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "") + name,
+          type: "luogo",
           color: "-",
           cost: "-",
-          effect: "Tipo di cella: " + name + " (" + q + "," + r + ")"
+          effect: effect
         }, { readOnly: true });
       }
     });

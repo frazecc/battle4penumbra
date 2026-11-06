@@ -42,9 +42,9 @@ const PLAINS = [
 
 const TEMPLES = {
   "-6,4":  { id: "cielo",  label: "☁", name: "Tempio del Cielo",  icon: "☁", color: "#81D4FA" },
-  "-2,-4": { id: "luna",   label: "☾", name: "Tempio della Luna", icon: "☾", color: "#CE93D8" },
+  "-2,-4": { id: "luna",   label: "🌙", name: "Tempio della Luna", icon: "🌙", color: "#CE93D8" },
   "2,4":   { id: "guerra", label: "⚔", name: "Tempio della Guerra", icon: "⚔", color: "#EF9A9A" },
-  "6,-4":  { id: "acqua",  label: "🌊", name: "Tempio dell'Acqua", icon: "🌊", color: "#80CBC4" }
+  "6,-4":  { id: "acqua",  label: "💧", name: "Tempio dell'Acqua", icon: "💧", color: "#80CBC4" }
 };
 
 const CITY = [0, 0];
@@ -61,16 +61,36 @@ CELL_TYPE.set("0,0", "city");
 // =====================================================
 
 const TILE_TYPE_DEFS = {
-  villaggio:     { name: "Villaggio",           icon: "🏠", color: "#BCAAA4" },
-  cimitero:      { name: "Cimitero",            icon: "⚰", color: "#78909C" },
-  rovine:        { name: "Rovine",              icon: "🏛", color: "#A1887F" },
-  circolo:       { name: "Circolo Rituale",     icon: "✦", color: "#B39DDB" },
-  teletrasporto: { name: "Teletrasporto",       icon: "🌀", color: "#4DD0E1" },
-  santuario:     { name: "Santuario",           icon: "🕯", color: "#FFE082" },
-  jungla:        { name: "Jungla",              icon: "🌿", color: "#558B2F" },
-  colosseo:      { name: "Colosseo",            icon: "🏟️", color: "#FF8A65" },
-  statua:        { name: "Statua del Colosso",  icon: "🗿", color: "#90A4AE" },
-  mercato:       { name: "Mercato Ombroso",     icon: "🎴", color: "#CE93D8" }
+  villaggio:     { name: "Villaggio",           icon: "🏠", color: "#BCAAA4",
+    desc: "Insediamento abitato. A fine turno può scatenare eventi del mazzo Villaggio (affari, reclute, tasse)." },
+  cimitero:      { name: "Cimitero",            icon: "⚰", color: "#78909C",
+    desc: "Terra dei morti. Eventi oscuri, maledizioni e forze del sottosuolo." },
+  rovine:        { name: "Rovine",              icon: "🏛", color: "#A1887F",
+    desc: "Resti di un'era perduta. Reperti, trappole e iscrizioni di potere." },
+  circolo:       { name: "Circolo Rituale",     icon: "✦", color: "#B39DDB",
+    desc: "Luogo di magia pura. Serve anche per evocare Mostrissimi (dopo sacrificio qui). Eventi arcani." },
+  teletrasporto: { name: "Teletrasporto",       icon: "🌀", color: "#4DD0E1",
+    desc: "Portale instabile. Non puoi restarci a fine turno: vieni spostato su un altro teletrasporto, poi devi fare un passo obbligatorio gratuito fuori dal portale. Non ha mazzo eventi." },
+  santuario:     { name: "Santuario",           icon: "🕯", color: "#FFE082",
+    desc: "Luogo sacro. Eventi di cura, protezione e fede." },
+  jungla:        { name: "Jungla",              icon: "🌿", color: "#558B2F",
+    desc: "Vegetazione feroce. Eventi naturali, agguati e crescita selvaggia." },
+  colosseo:      { name: "Colosseo",            icon: "🏟️", color: "#FF8A65",
+    desc: "Arena di combattimento. Eventi di gloria, sangue e allenamento brutale." },
+  statua:        { name: "Statua del Colosso",  icon: "🗿", color: "#90A4AE",
+    desc: "Monumento antico. Eventi legati alla pietra, alla forza e agli echi del passato." },
+  mercato:       { name: "Mercato Ombroso",     icon: "🎴", color: "#CE93D8",
+    desc: "Commercio nel crepuscolo. Eventi di scambi, truffe e affari." },
+  plain:         { name: "Desolazione",         icon: "·", color: "#7CB342",
+    desc: "Terreno vuoto. Nessun mazzo eventi." },
+  desolazione:   { name: "Desolazione",         icon: "·", color: "#7CB342",
+    desc: "Terreno vuoto. Nessun mazzo eventi." },
+  mountain:      { name: "Montagna",            icon: "▲", color: "#5D4037",
+    desc: "Invalicabile. Non puoi muoverti né piazzare creature qui." },
+  temple:        { name: "Tempio",              icon: "🏛", color: "#FFF59D",
+    desc: "Tempio di un'entità. Qui si evocano i mostri e compare lo Spirito del Tempio. Occuparlo da nemici è pericoloso." },
+  city:          { name: "Altare",              icon: "★", color: "#D32F2F",
+    desc: "Altare al centro della mappa. Può essere usato per evocare Mostrissimi se vi sacrifichi una creatura." }
 };
 const EVENT_TILE_TYPES = ["villaggio","cimitero","rovine","circolo","santuario","jungla","colosseo","statua","mercato"];
 const EVENT_DECKS = {

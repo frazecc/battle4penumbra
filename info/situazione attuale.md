@@ -1,10 +1,12 @@
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 034 – VERSION: v034
+BATTLE FOR PENUMBRA – consegna 035 – VERSION: v035
 ================================================================================
-- Chiavi Supabase inserite in js/config.js
-- Guida chiara in SUPABASE_SETUP.md (solo tabella games + auth email)
-- Stesso codice di v033 + config reale
-- Utente non carica la v033
+- APP_VERSION e badge sito → v035 (fix bug che mostrava ancora v031)
+- Icone templi: ☁ Cielo, 🌙 Luna, ⚔ Guerra, 💧 Acqua — più grandi + alone colorato
+- Badge tempio sulle creature più visibile
+- Tasto destro su esagono: nome luogo + descrizione regole + creature presenti
+- IA più intelligente: artefatto, evocazioni di valore, magie su minacce,
+  attacchi favorevoli, movimento verso umani/altare
 
-FILE: js/config.js, SUPABASE_SETUP.md, resto come v033
+FILE: js/app.js, js/data.js, js/map.js, js/game.js, index.html
 ================================================================================

@@ -2315,23 +2315,34 @@ class GameState {
       return;
     }
     this.addLog(ai.name + " sta pensando...");
+    // =====================================================
+    // IA – obiettivi (in ordine):
+    // 1) Artefatto SEMPRE sul campo (priorità assoluta)
+    // 2) Evocare mostri sul tempio se libero e mana lo permette
+    // 3) Lanciare magie utili su bersagli di valore
+    // 4) Attaccare se favorevole (adiacente, non suicida se evitabile)
+    // 5) Avanzare verso nemici / Altare senza sprecare mana
+    // =====================================================
+
+    // --- 1) Artefatto ---
     if (!ai.hasArtifactOnField()) {
       const artCard = ai.hand.find(c => c.id === "artifact" || c.type === "artefatto");
       if (artCard && ai.canPay(artCard.currentCost || 0)) {
-        // Preferisci una creatura già in campo
         const creatures = ai.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
         if (creatures.length) {
+          // Preferisci la creatura più tosta
+          creatures.sort((a, b) => ((b.atk||0)+(b.currentHp||0)) - ((a.atk||0)+(a.currentHp||0)));
           this.selectedCard = artCard;
           this.attachMode = true;
           this.attachArtifactToUnit(creatures[0].instanceId);
         } else {
-          // Evoca prima un mostro se possibile, altrimenti skip
-          const mon = ai.hand.find(c => c.type === "mostro" && ai.canPay(c.cost || 0));
+          const mon = ai.hand
+            .filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
+            .sort((a, b) => (b.cost||0) - (a.cost||0))[0];
           if (mon) {
             const target = this._findPlacementHex(ai);
             if (target) {
               this.selectedCard = mon; this.playMode = true; this.playCardOnHex(target[0], target[1]);
-              // Poi lega artefatto
               if (ai.field.length) {
                 this.selectedCard = artCard; this.attachMode = true;
                 this.attachArtifactToUnit(ai.field[0].instanceId);
@@ -2341,60 +2352,111 @@ class GameState {
         }
       }
     }
-    const playable = ai.hand.filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost));
-    if (playable.length > 0 && ai.field.length < 5) {
-      playable.sort((a, b) => (b.cost || 0) - (a.cost || 0));
-      const card = playable[0];
-      const target = this._findPlacementHex(ai);
-      if (target) { this.selectedCard = card; this.playMode = true; this.playCardOnHex(target[0], target[1]); }
+
+    // --- 2) Evocazioni (dal più costoso giocabile: valore) ---
+    const place = this._findPlacementHex(ai);
+    if (place) {
+      const monsters = ai.hand
+        .filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
+        .sort((a, b) => {
+          const va = (a.atk||0) + (a.hp||0) + (a.cost||0);
+          const vb = (b.atk||0) + (b.hp||0) + (b.cost||0);
+          return vb - va;
+        });
+      if (monsters[0]) {
+        this.selectedCard = monsters[0];
+        this.playMode = true;
+        this.playCardOnHex(place[0], place[1]);
+      }
     }
-    const curses = ai.hand.filter(c => c.type === "maledizione" && ai.canPay(c.cost || 0));
-    if (curses.length) {
-      const curse = curses[0];
+
+    // --- 3) Magie a bersaglio: preferisci uccidere o danneggiare minacce ---
+    const curses = ai.hand.filter(c => c.type === "maledizione" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost));
+    for (const card of curses) {
+      const enemies = [];
       for (const ent of this.entities) {
         if (ent.id === ai.id || ent.isFallen) continue;
-        for (const u of ent.field) {
-          if (this.isVisibleTo(ai, u.q, u.r)) {
-            this.selectedCard = curse;
-            this.targetMode = { card: curse, effectId: curse.effectId, remaining: 1, targets: [] };
-            this.selectTargetUnit(u);
-            break;
-          }
+        for (const u of ent.field) enemies.push(u);
+      }
+      if (!enemies.length) break;
+      // Mira al più forte / con artefatto
+      enemies.sort((a, b) => {
+        const ea = this.getEntityById(a.ownerId);
+        const eb = this.getEntityById(b.ownerId);
+        const artA = ea && ea.artifactAttachedTo === a.instanceId ? 5 : 0;
+        const artB = eb && eb.artifactAttachedTo === b.instanceId ? 5 : 0;
+        return ((b.atk||0)+(b.currentHp||0)+artB) - ((a.atk||0)+(a.currentHp||0)+artA);
+      });
+      const target = enemies[0];
+      if (card.needsTarget || card.effectId) {
+        this.targetMode = { card, effectId: card.effectId, remaining: card.multiTarget || 1, targets: [] };
+        this.selectTargetUnit(target);
+        if (this.targetMode && this.targetMode.targets.length >= 1) {
+          this.confirmSpellCast(true);
         }
-        if (!this.selectedCard) break;
+        break; // una magia per turno
       }
     }
+
+    // --- 4) Combattimento favorevole ---
     for (const unit of [...ai.field]) {
       if (unit.isWithered) continue;
-      const cost = unit.movedThisTurn ? 1 : 0;
-      if (!ai.canPay(cost)) continue;
-      const neighbors = this._hexesInRange(unit.q, unit.r, 1);
-      for (const [q, r] of neighbors) {
+      const nbs = this._hexesInRange(unit.q, unit.r, 1);
+      let bestAtk = null;
+      for (const [q, r] of nbs) {
         const enemy = this.getUnitAt(q, r);
-        if (enemy && enemy.ownerId !== ai.id) {
-          const atkP = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
-          if (atkP >= (enemy.currentHp || 1) || atkP >= ((enemy.atk || 0) + 1)) {
-            this.selectedUnit = unit; this.moveMode = true; this.tryMoveOrAttack(q, r); break;
-          }
+        if (!enemy || enemy.ownerId === ai.id) continue;
+        const atkP = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
+        const defHp = enemy.currentHp || 1;
+        // Attacca se uccidi o se hai almeno pari attacco
+        if (atkP >= defHp || atkP >= ((enemy.atk || 0))) {
+          bestAtk = [q, r];
+          if (atkP >= defHp) break; // priorità kill
         }
       }
+      if (bestAtk) {
+        this.selectedUnit = unit;
+        this.moveMode = true;
+        this.tryMoveOrAttack(bestAtk[0], bestAtk[1]);
+      }
     }
+
+    // --- 5) Movimento: avvicinati al nemico più debole o all'Altare ---
+    const human = this.entities.find(e => e.isHuman && !e.isFallen);
     for (const unit of [...ai.field]) {
       if (unit.isWithered) continue;
-      const cost = unit.movedThisTurn ? 1 : 0;
-      if (!ai.canPay(cost)) continue;
-      const neighbors = this._hexesInRange(unit.q, unit.r, 1);
-      let best = null, bestScore = 999;
-      const human = this.entities.find(e => e.isHuman);
-      if (human && human.field.length) {
-        for (const [q, r] of neighbors) {
-          if (CELL_TYPE.get(q + "," + r) === "mountain" || this.getUnitAt(q, r)) continue;
-          const d = hexDistance(q, r, human.field[0].q, human.field[0].r);
-          if (d < bestScore) { bestScore = d; best = [q, r]; }
+      if (unit.movedThisTurn && ai.mana <= 0) continue;
+      const { cells } = this.getReachableCells(unit, ai);
+      if (!cells.size) continue;
+      let best = null, bestScore = -1e9;
+      for (const [key, info] of cells) {
+        const [q, r] = key.split(",").map(Number);
+        let score = 0;
+        // Verso creature umane
+        if (human && human.field.length) {
+          let minD = 99;
+          for (const hu of human.field) {
+            minD = Math.min(minD, hexDistance(q, r, hu.q, hu.r));
+          }
+          score += (20 - minD) * 3;
         }
+        // Verso altare
+        score += (12 - hexDistance(q, r, 0, 0));
+        // Preferisci path economici
+        score -= (info.cost || 0) * 0.5;
+        // Evita di finire avvizziti se non necessario
+        if (!this.isCellDiscovered(q, r, ai)) score -= 8;
+        if (score > bestScore) { bestScore = score; best = { q, r, info }; }
       }
-      if (best) { this.selectedUnit = unit; this.moveMode = true; this.tryMoveOrAttack(best[0], best[1]); break; }
+      if (best) {
+        this.selectedUnit = unit;
+        this.moveMode = true;
+        this.tryMoveOrAttack(best.q, best.r);
+        // solo una creatura si muove in modo aggressivo per non bruciare tutto il mana
+        break;
+      }
     }
+
     // Salva il timeout così possiamo annullarlo se il turno diventa umano
     if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
     this._aiEndTurnTimeout = setTimeout(async () => {

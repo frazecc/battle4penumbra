@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "031";
+const APP_VERSION = "035";
 
 let game = null;
 let currentScreen = "auth";
@@ -706,7 +706,7 @@ function showCardDetail(card, opts) {
     (isFieldUnit ? "<p><strong>Posizione:</strong> (" + card.q + "," + card.r + ")</p>" : "") +
     witheredStr +
     movedStr +
-    "<p style=\"margin-top:12px;line-height:1.6\"><strong>Effetto:</strong><br>" + (card.effect || "Nessuno") + (card.type === "mostrissimo" ? " <em>(Entra in campo avvizzito)</em>" : "") + "</p>";
+    "<p style=\"margin-top:12px;line-height:1.55;white-space:pre-wrap\"><strong>Descrizione:</strong><br>" + String(card.effect || "Nessuna").replace(/\n/g, "<br>") + (card.type === "mostrissimo" ? " <em>(Entra in campo avvizzito)</em>" : "") + "</p>";
 
   let actions = document.getElementById("card-detail-actions");
   if (!actions) {

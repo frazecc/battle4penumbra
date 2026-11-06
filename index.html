@@ -43,7 +43,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v027</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v028</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -52,6 +52,16 @@
     <div class="home-content">
       <h1 class="home-title">Benvenuto</h1>
       <div class="home-grid">
+        <div class="home-card" id="btn-resume-game" style="border-color:#64FFDA;">
+          <div style="font-size:1.5rem;margin-bottom:6px;">💾</div>
+          <div style="font-weight:700;">Continua partita</div>
+          <div style="font-size:0.85rem;opacity:0.75;margin-top:4px;">Riprendi l'ultima partita salvata su questo dispositivo</div>
+        </div>
+        <div class="home-card" id="btn-import-save">
+          <div style="font-size:1.5rem;margin-bottom:6px;">📥</div>
+          <div style="font-weight:700;">Importa codice partita</div>
+          <div style="font-size:0.85rem;opacity:0.75;margin-top:4px;">Incolla un codice esportato da un altro dispositivo</div>
+        </div>
         <div class="home-card" id="btn-partita-base">
           <div class="icon">🗺️</div>
           <h3>Partita Base</h3>
@@ -119,6 +129,7 @@
           <div class="mana-display">
             <span id="mana-info">Mana: -</span>
             <button id="btn-cancel-action" class="btn" style="padding:6px 12px;display:none;">Annulla</button>
+            <button id="btn-export-save" class="btn" style="padding:6px 12px;" title="Esporta codice partita">💾</button>
             <button id="btn-end-turn" class="btn" style="padding:6px 16px;">Termina Turno</button>
           </div>
         </div>

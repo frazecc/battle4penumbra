@@ -1,22 +1,30 @@
 ================================================================================
 BATTLE FOR PENUMBRA – REGOLE DI CONSEGNA (ONNIPRESENTI – NON CANCELLABILI)
-Queste regole devono essere rispettate in OGNI chat e in OGNI consegna futura.
-Non possono essere rimosse, ignorate o sovrascritte.
-Ogni modifica deve essere consegnata in una SOTTOCARTELLA dedicata NUOVA.
-NON si modifica mai una cartella di consegna già consegnata.
-Ad ogni consegna si DEVE aggiornare il numero di VERSIONE.
-Ad ogni consegna si DEVE aggiornare questo file "situazione attuale".
-Modifiche solo chirurgiche rispetto alla richiesta corrente.
-Fine lavoro = nuova sottocartella pronta + situazione attuale aggiornata.
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 027 – VERSION: v027
-NEW / CHANGE
-Draft: il primo pacchetto scelto inietta una carta costo 6 del colore del
-pacchetto (colore principale). Dopo, nessuna altra carta costo 6.
-Evocazione su Tempio occupato (alleato o nemico): popup di conferma
-distruzione + evocazione.
-Movimento verso Tempio nemico: avviso di pericolo prima di entrare.
-Eventi "pesca": scegli 1 di 2 carte random di un colore casuale (mai costo 6).
-Token recluta: nasce sul Tempio se libero.
-Rimossi sconti mana/costo e sacrifici volontari dagli eventi (sostituiti).
-FILE: js/game.js, js/data.js, js/app.js, index.html
+
+1. Ogni modifica → SOTTOCARTELLA NUOVA (mai modificare consegne già consegnate).
+2. Aggiornare sempre VERSION e questo file.
+3. Modifiche solo chirurgiche.
+
+================================================================================
+BATTLE FOR PENUMBRA – consegna 028 – VERSION: v028
+================================================================================
+
+FIX – Movimento
+- tryMoveOrAttack: normalizza q/r a Number, riallinea selectedUnit al campo live
+- In caso di click non valido NON esce più da moveMode
+- Log di debug con coordinate se dist ≠ 1
+
+CHANGE – Mostrissimi
+- Evocabili SOLO su Altare (city) o Circolo Rituale dopo sacrificio lì
+- Non più sui Templi
+- Costo 0: piazzabili su Altare/Circolo liberi
+
+NEW – Salvataggio partita
+- Auto-save su localStorage (per account, stesso dispositivo) a ogni aggiornamento UI
+- Home: «Continua partita» e «Importa codice partita»
+- In partita: pulsante 💾 esporta codice (copiabile su altro dispositivo)
+- Nota: localStorage non sincronizza da solo tra device → usare Esporta/Importa
+
+FILE: js/game.js, js/map.js, js/app.js, js/auth.js, index.html
+================================================================================

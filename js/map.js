@@ -41,12 +41,18 @@ const MapRenderer = {
   },
 
   pixelToAxial(px, py) {
-    // Inverse (approximate)
+    // px/py in coordinate CSS del canvas (clientX - rect.left)
     const x = (px - this.offsetX) / this.scale;
     const y = (py - this.offsetY) / this.scale;
     const q = (Math.sqrt(3)/3 * x - 1/3 * y) / this.size;
     const r = (2/3 * y) / this.size;
     return this._hexRound(q, r);
+  },
+
+  /** Coordinate del mouse relative al canvas in spazio CSS */
+  _eventToCanvasXY(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    return { mx: e.clientX - rect.left, my: e.clientY - rect.top };
   },
 
   _hexRound(q, r) {
@@ -550,11 +556,14 @@ const MapRenderer = {
 
         // 2) Modalità Muovi / Attacca
         if (this.game.moveMode && this.game.selectedUnit) {
-          this.game.tryMoveOrAttack(q, r);
+          const ok = this.game.tryMoveOrAttack(q, r);
           if (typeof closeCardDetail === "function") closeCardDetail();
-          this.game.selectedUnit = null;
-          this.game.moveMode = false;
-          suppressPreview = true;
+          // Esci da moveMode solo se il movimento/attacco è andato a buon fine
+          if (ok) {
+            this.game.selectedUnit = null;
+            this.game.moveMode = false;
+            suppressPreview = true;
+          }
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;

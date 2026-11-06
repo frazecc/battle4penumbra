@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "027";
+const APP_VERSION = "028";
 
 let game = null;
 let currentScreen = "auth";
@@ -808,7 +808,7 @@ function showCardDetail(card, opts) {
 
 window.showCardDetail = showCardDetail;
 window.openGraveyard = openGraveyard;
-window.onGameUpdate = renderGameState;
+window.onGameUpdate = function(){ renderGameState(); if (typeof persistGame==='function') persistGame(); };
 
 function renderGameState() {
   if (!game) return;
@@ -1155,3 +1155,101 @@ window.onCardPickPrompt = function(pending) {
   modal.style.display = "flex";
 };
 
+
+
+// =====================================================
+// SALVATAGGIO PARTITA (localStorage + codice esportabile)
+// Nota: localStorage è per dispositivo. Per altro device usa Esporta/Importa codice.
+// =====================================================
+const SAVE_PREFIX = "penumbra_gamesave_";
+
+function saveGameKey() {
+  const s = (typeof getSession === "function") ? getSession() : null;
+  const user = (s && s.username) || "guest";
+  return SAVE_PREFIX + user;
+}
+
+function persistGame() {
+  if (!game || game.phase === "ended" || game.phase === "setup" || game.phase === "draft") return;
+  try {
+    const data = game.toSaveData();
+    localStorage.setItem(saveGameKey(), JSON.stringify(data));
+  } catch (err) {
+    console.warn("Salvataggio fallito", err);
+  }
+}
+
+function loadPersistedGame() {
+  try {
+    const raw = localStorage.getItem(saveGameKey());
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearPersistedGame() {
+  localStorage.removeItem(saveGameKey());
+}
+
+function resumeSavedGame() {
+  const data = loadPersistedGame();
+  if (!data) {
+    alert("Nessuna partita salvata per questo account su questo dispositivo.");
+    return false;
+  }
+  game = GameState.fromSaveData(data);
+  window.game = game;
+  // UI
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  const screen = document.getElementById("screen-game");
+  if (screen) screen.classList.add("active");
+  if (typeof MapRenderer !== "undefined") {
+    MapRenderer.init("gameCanvas", game);
+  }
+  if (typeof renderGameState === "function") renderGameState();
+  game.addLog("Partita ripresa dal salvataggio.", true);
+  return true;
+}
+
+function exportSaveCode() {
+  if (!game) { alert("Nessuna partita attiva."); return; }
+  persistGame();
+  const data = game.toSaveData();
+  const code = btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+  const ta = document.createElement("textarea");
+  ta.value = code;
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); } catch(e) {}
+  document.body.removeChild(ta);
+  prompt("Codice partita (copialo e usalo su un altro dispositivo con Importa):", code);
+}
+
+function importSaveCode() {
+  const code = prompt("Incolla il codice partita esportato:");
+  if (!code) return;
+  try {
+    const json = decodeURIComponent(escape(atob(code.trim())));
+    const data = JSON.parse(json);
+    game = GameState.fromSaveData(data);
+    window.game = game;
+    localStorage.setItem(saveGameKey(), JSON.stringify(data));
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    const screen = document.getElementById("screen-game");
+    if (screen) screen.classList.add("active");
+    if (typeof MapRenderer !== "undefined") MapRenderer.init("gameCanvas", game);
+    if (typeof renderGameState === "function") renderGameState();
+    game.addLog("Partita importata da codice.", true);
+  } catch (err) {
+    alert("Codice non valido: " + err.message);
+  }
+}
+
+// Auto-save agganciato a onGameUpdate
+
+
+document.getElementById("btn-resume-game")?.addEventListener("click", () => resumeSavedGame());
+document.getElementById("btn-import-save")?.addEventListener("click", () => importSaveCode());
+document.getElementById("btn-export-save")?.addEventListener("click", () => exportSaveCode());

@@ -288,18 +288,14 @@ class GameState {
     }
 
     if (t === "mostrissimo") {
-      // v023: i Mostrissimi si evocano solo dal pool con flusso sacrificio interattivo.
-      // Qui controlliamo solo se ci sono abbastanza permanenti da sacrificare
-      // e se il proprio tempio è libero (casella sempre legale).
+      // v028: serve abbastanza permanenti da sacrificare (0 ok) e almeno un Altare/Circolo esistente
       const sac = card.sacrifice || 0;
       const permanents = entity.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
       if (permanents.length < sac) return false;
-      if (!entity.templeKey) return false;
-      const [tq, tr] = entity.templeKey.split(",").map(Number);
-      // Il tempio deve essere libero OPPURE abbiamo abbastanza creature (potremmo sbloccare altare/circolo)
-      // Per semplicità: se il tempio è libero OK; se no, serve almeno 1 permanente (che potrebbe stare su altare/circolo)
-      if (!this.getUnitAt(tq, tr)) return true;
-      return permanents.length > 0; // potrebbe sbloccare altre celle via sacrificio
+      for (const [key, type] of CELL_TYPE) {
+        if (type === "city" || type === "circolo") return true;
+      }
+      return false;
     }
 
     if (t === "artefatto") {
@@ -634,13 +630,13 @@ class GameState {
         this.addLog("Cella occupata!");
         return false;
       }
-      // MOSTRISSIMO (v023): solo Tempio proprio, oppure Altare/Circolo sbloccati dai sacrifici
+      // MOSTRISSIMO (v028): solo Altare o Circolo su cui hai sacrificato (mai Tempio)
       if (card.type === "mostrissimo") {
         const key = q + "," + r;
-        const isOwnTemple = e.templeKey === key;
+        const cellType = CELL_TYPE.get(key);
         const isUnlockedSpecial = this.sacrificedPositions && this.sacrificedPositions.has(key);
-        if (!isOwnTemple && !isUnlockedSpecial) {
-          this.addLog("Casella non legale per questo Mostrissimo! Solo il tuo Tempio, o Altare/Circolo su cui hai sacrificato.");
+        if (!(isUnlockedSpecial && (cellType === "city" || cellType === "circolo"))) {
+          this.addLog("I Mostrissimi si evocano solo su Altare o Circolo Rituale (dopo aver sacrificato lì). Non più sui Templi.");
           return false;
         }
       }
@@ -770,7 +766,11 @@ class GameState {
   tryMoveOrAttack(q, r) {
     const e = this.currentEntity;
     if (!this.selectedUnit || !this.moveMode) return false;
-    const unit = this.selectedUnit;
+    // Riallinea al riferimento live sul campo (evita copie stale)
+    const unit = e.field.find(u => u.instanceId === this.selectedUnit.instanceId) || this.selectedUnit;
+    this.selectedUnit = unit;
+    q = Number(q); r = Number(r);
+    unit.q = Number(unit.q); unit.r = Number(unit.r);
 
     // Avvizzita: non può fare azioni (solo difendere)
     if (unit.isWithered) {
@@ -788,7 +788,10 @@ class GameState {
       return false;
     }
     const dist = hexDistance(unit.q, unit.r, q, r);
-    if (dist !== 1) { this.addLog("Solo 1 passo alla volta!"); return false; }
+    if (dist !== 1) {
+      this.addLog("Solo 1 passo alla volta! (da " + unit.q + "," + unit.r + " a " + q + "," + r + " dist=" + dist + ")");
+      return false; // NON uscire da moveMode
+    }
     if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }
 
     // Primo movimento del turno della creatura è gratuito
@@ -2055,7 +2058,7 @@ class GameState {
     // Copia carta pronta per il piazzamento
     const card = { ...ms, instanceId: (ms.instanceId || ms.id) + "_sum_" + Date.now() };
 
-    // Caso 0 sacrifici → vai diretto in modalità piazzamento
+    // Caso 0 sacrifici → piazzamento su Altare/Circolo liberi
     if (sac === 0) {
       this.selectedCard = card;
       this.playMode = true;
@@ -2064,7 +2067,13 @@ class GameState {
       this.sacrificeCount = 0;
       this.sacrificeNeeded = 0;
       this.sacrificedPositions = new Set();
-      this.addLog("Selezionato " + card.name + " (0 sacrifici). Clicca il tuo Tempio per evocarlo.");
+      for (const [key, type] of CELL_TYPE) {
+        if (type === "city" || type === "circolo") {
+          const [qq, rr] = key.split(",").map(Number);
+          if (!this.getUnitAt(qq, rr)) this.sacrificedPositions.add(key);
+        }
+      }
+      this.addLog("Selezionato " + card.name + " (0 sacrifici). Clicca Altare o Circolo libero.");
       return true;
     }
 
@@ -2140,18 +2149,12 @@ class GameState {
     const e = this.currentEntity;
     if (!e || !this.selectedCard || this.selectedCard.type !== "mostrissimo") return [];
     const legal = [];
-
-    // 1) Sempre il proprio Tempio (se libero)
-    if (e.templeKey) {
-      const [tq, tr] = e.templeKey.split(",").map(Number);
-      if (!this.getUnitAt(tq, tr)) legal.push([tq, tr]);
-    }
-
-    // 2) Celle speciali sbloccate dai sacrifici (se ancora libere)
+    // v028: SOLO Altare (city) e Circoli sbloccati dai sacrifici — mai i Templi
     if (this.sacrificedPositions) {
       for (const key of this.sacrificedPositions) {
         const [q, r] = key.split(",").map(Number);
-        if (!this.getUnitAt(q, r)) legal.push([q, r]);
+        const t = CELL_TYPE.get(key);
+        if ((t === "city" || t === "circolo") && !this.getUnitAt(q, r)) legal.push([q, r]);
       }
     }
     return legal;
@@ -2163,7 +2166,131 @@ class GameState {
     const ms = this.mostrissimiPool[poolIndex];
     return this.startMostrissimoSacrifice(ms);
   }
+
+  // =====================================================
+  // SALVATAGGIO PARTITA (serializzazione)
+  // =====================================================
+  toSaveData() {
+    const setToArr = (s) => (s && typeof s[Symbol.iterator] === "function") ? [...s] : [];
+    return {
+      version: (typeof APP_VERSION !== "undefined" ? APP_VERSION : "028"),
+      savedAt: Date.now(),
+      humanName: this.humanName,
+      numAI: this.numAI,
+      numFallenTemples: this.numFallenTemples,
+      turnIndex: this.turnIndex,
+      turnNumber: this.turnNumber,
+      phase: this.phase,
+      log: this.log.slice(-80),
+      winner: this.winner && this.winner.id,
+      loseReason: this.loseReason,
+      mostrissimiPool: this.mostrissimiPool,
+      globalClearFogUntil: this.globalClearFogUntil,
+      flippedCells: setToArr(this.flippedCells),
+      mostrissimiSummonedThisTurn: this.mostrissimiSummonedThisTurn || 0,
+      specialZones: this.specialZones || {},
+      cellTypeOverrides: (() => {
+        const o = {};
+        for (const [k, t] of CELL_TYPE) {
+          if (t !== "mountain" && t !== "plain" && t !== "temple" && t !== "city") o[k] = t;
+        }
+        // always store specials
+        if (this.specialZones) {
+          for (const k of Object.keys(this.specialZones)) o[k] = this.specialZones[k].type || CELL_TYPE.get(k);
+        }
+        return o;
+      })(),
+      entities: this.entities.map(e => ({
+        id: e.id,
+        name: e.name,
+        isHuman: e.isHuman,
+        isFallen: e.isFallen,
+        manaMax: e.manaMax,
+        mana: e.mana,
+        hand: e.hand,
+        field: e.field,
+        graveyard: e.graveyard,
+        traps: e.traps || [],
+        artifact: e.artifact,
+        artifactAttachedTo: e.artifactAttachedTo,
+        templeKey: e.templeKey,
+        templeId: e.templeId,
+        templeName: e.templeName,
+        templeIcon: e.templeIcon,
+        passives: e.passives || [],
+        clearFogUntil: e.clearFogUntil || 0,
+        firstPackPicked: e.firstPackPicked,
+        primaryColor: e.primaryColor,
+        apexCardInstanceId: e.apexCardInstanceId,
+        explored: setToArr(e.explored)
+      }))
+    };
+  }
+
+  static fromSaveData(data) {
+    const g = new GameState({
+      humanName: data.humanName || "Giocatore",
+      numAI: data.numAI || 1,
+      numFallenTemples: data.numFallenTemples || 0
+    });
+    // Applica zone speciali salvate
+    if (data.cellTypeOverrides) {
+      for (const [k, t] of Object.entries(data.cellTypeOverrides)) {
+        CELL_TYPE.set(k, t);
+      }
+    }
+    if (data.specialZones) {
+      g.specialZones = data.specialZones;
+      if (typeof SPECIAL_ZONES !== "undefined") SPECIAL_ZONES = data.specialZones;
+    }
+    g.entities = (data.entities || []).map(ed => {
+      const e = new Entity(ed.id, ed.name, !!ed.isHuman);
+      Object.assign(e, {
+        isFallen: ed.isFallen,
+        manaMax: ed.manaMax,
+        mana: ed.mana,
+        hand: ed.hand || [],
+        field: (ed.field || []).map(u => ({ ...u, q: Number(u.q), r: Number(u.r) })),
+        graveyard: ed.graveyard || [],
+        traps: ed.traps || [],
+        artifact: ed.artifact,
+        artifactAttachedTo: ed.artifactAttachedTo,
+        templeKey: ed.templeKey,
+        templeId: ed.templeId,
+        templeName: ed.templeName,
+        templeIcon: ed.templeIcon,
+        passives: ed.passives || [],
+        clearFogUntil: ed.clearFogUntil || 0,
+        firstPackPicked: ed.firstPackPicked,
+        primaryColor: ed.primaryColor,
+        apexCardInstanceId: ed.apexCardInstanceId,
+        explored: new Set(ed.explored || [])
+      });
+      return e;
+    });
+    g.turnIndex = data.turnIndex || 0;
+    g.turnNumber = data.turnNumber || 1;
+    g.phase = data.phase || "playing";
+    g.log = data.log || [];
+    g.mostrissimiPool = data.mostrissimiPool || [];
+    g.globalClearFogUntil = data.globalClearFogUntil || 0;
+    g.flippedCells = new Set(data.flippedCells || []);
+    g.mostrissimiSummonedThisTurn = data.mostrissimiSummonedThisTurn || 0;
+    g.winner = data.winner ? g.getEntityById(data.winner) : null;
+    g.loseReason = data.loseReason || null;
+    // reset UI state
+    g.selectedCard = null;
+    g.selectedUnit = null;
+    g.moveMode = false;
+    g.playMode = false;
+    g.attachMode = false;
+    g.sacrificeMode = false;
+    g.pendingTeleportStep = null;
+    g.pendingEventChoice = null;
+    return g;
+  }
 }
+
 
 function hexDistance(q1, r1, q2, r2) {
   return (Math.abs(q1 - q2) + Math.abs(q1 + r1 - q2 - r2) + Math.abs(r1 - r2)) / 2;

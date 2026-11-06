@@ -1,14 +1,14 @@
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 031 – VERSION: v031
+BATTLE FOR PENUMBRA – consegna 032 – VERSION: v032
 ================================================================================
-FIX – Freeze dopo scelta carta evento
-- Causa: dopo resolveCardPick/_finishEndTurn il turno passava al Tempio Caduto
-  ma nessuno chiamava runAITurn()
-- Aggiunto GameState._scheduleNextActor() chiamato a fine _finishEndTurn
+1. Tasto destro: contextmenu su mappa (unità/tessere) e mano/pool → dettaglio z-index alto
+2. Artefatto in mano: forma a stella (clip-path) dorata + label ARTEFATTO
+3. Fine turno: popup unico «Hai scoperto: …» per celle speciali (non Desolazione)
+4. Movimento multi-passo: pathfinding, celle raggiungibili, conferma costo mana,
+   Vedi mappa + linea con freccia, ricalcolo click su altra cella
+5. Magie: selezione bersaglio + pannello Conferma/Annulla e counter x/y
 
-UI – Scelta carte
-- Due carte grandi e leggibili (stats + effetto a vista)
-- Dettaglio carta (tasto destro) z-index 3000, sempre in primo piano
+Naming: plain → «Desolazione» nei log/nomi (non obbligatorio in hex label)
 
-FILE: js/game.js, js/app.js, index.html
+FILE: js/game.js, js/map.js, js/app.js, index.html
 ================================================================================

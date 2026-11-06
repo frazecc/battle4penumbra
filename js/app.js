@@ -656,6 +656,7 @@ function openGraveyard(entityId) {
       div.className = "grave-card";
       div.innerHTML = "<span class=\"color-dot color-" + (c.color||"yellow") + "\"></span> <strong>" + c.name + "</strong> <span style=\"color:var(--text-dim);font-size:0.8rem\">" + (c.type||"") + " · costo " + (c.cost||0) + "</span>";
       div.onclick = () => showCardDetail(c);
+      div.oncontextmenu = (e) => { e.preventDefault(); showCardDetail(c, { readOnly: true }); };
       list.appendChild(div);
     });
   }
@@ -888,19 +889,32 @@ function renderGameState() {
         const el = document.createElement("div");
         const cost = card.currentCost !== undefined ? card.currentCost : (card.cost || 0);
         const playable = game.isCardPlayable ? game.isCardPlayable(card, human) : false;
+        const isArt = (card.type || "").toLowerCase() === "artefatto" || card.id === "artifact";
 
-        el.className = "hand-card" + (playable ? " playable" : " unplayable");
+        el.className = "hand-card" + (playable ? " playable" : " unplayable") + (isArt ? " hand-card-artifact" : "");
         if (game.selectedCard && game.selectedCard.instanceId === card.instanceId) {
           el.classList.add("selected");
         }
-
-        el.innerHTML =
-          "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div>" +
-          "<div class=\"meta\">" + card.type + " • Costo " + cost + "</div>" +
-          "<div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect || "").substring(0, 55) + "...</div>";
+        if (isArt) {
+          el.style.cssText = "clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);background:radial-gradient(circle at 50% 40%,#FFE082,#FF8F00 55%,#E65100);border:none;min-width:100px;min-height:110px;box-shadow:0 0 18px rgba(255,193,7,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px 8px 12px;";
+          el.innerHTML =
+            "<div style=\"font-size:0.65rem;font-weight:800;letter-spacing:0.06em;color:#3E2723;\">ARTEFATTO</div>" +
+            "<div style=\"font-size:0.85rem;font-weight:800;color:#1A0A00;text-align:center;line-height:1.15;\">" + (card.name || "Artefatto") + "</div>" +
+            "<div style=\"font-size:0.7rem;color:#3E2723;\">Costo " + cost + "</div>";
+        } else {
+          el.innerHTML =
+            "<div class=\"name\"><span class=\"color-dot color-" + card.color + "\"></span>" + card.name + "</div>" +
+            "<div class=\"meta\">" + card.type + " • Costo " + cost + "</div>" +
+            "<div class=\"meta\" style=\"font-size:0.72rem;\">" + (card.effect || "").substring(0, 55) + "...</div>";
+        }
 
         el.addEventListener("click", () => {
           showCardDetail(card, { fromHand: true });
+        });
+        el.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          showCardDetail(card, { fromHand: true, readOnly: false });
         });
         handEl.appendChild(el);
       });
@@ -1296,5 +1310,82 @@ window.onEventDetailPrompt = function(pending) {
   }
   modal.classList.remove("hidden");
   modal.style.display = "flex";
+};
+
+
+window.onMovePathPrompt = function(pending, unit) {
+  let panel = document.getElementById("move-path-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "move-path-panel";
+    panel.style.cssText = "position:fixed;bottom:120px;left:50%;transform:translateX(-50%);z-index:2600;background:rgba(13,27,42,0.95);border:1px solid #FFD54F;border-radius:12px;padding:14px 18px;display:flex;flex-direction:column;gap:10px;min-width:280px;box-shadow:0 8px 28px rgba(0,0,0,0.5);";
+    document.body.appendChild(panel);
+  }
+  const dest = pending.path[pending.path.length - 1];
+  panel.innerHTML =
+    "<div style='color:#FFD54F;font-weight:700;'>Movimento: " + (unit && unit.name ? unit.name : "creatura") + "</div>" +
+    "<div style='color:#aaa;font-size:0.9rem;'>Destinazione (" + dest[0] + "," + dest[1] + ") · " + pending.path.length + " passi · <strong style='color:#fff'>costo " + (pending.cost||0) + " mana</strong></div>" +
+    "<div style='display:flex;gap:8px;flex-wrap:wrap;'>" +
+    "<button class='btn btn-primary' id='btn-move-yes'>Conferma</button>" +
+    "<button class='btn' id='btn-move-map'>Vedi mappa</button>" +
+    "<button class='btn' id='btn-move-no'>Annulla</button></div>";
+  panel.style.display = "flex";
+  document.getElementById("btn-move-yes").onclick = function() {
+    panel.style.display = "none";
+    if (game) game.confirmMovePath(true);
+    if (typeof renderGameState === "function") renderGameState();
+    if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  };
+  document.getElementById("btn-move-no").onclick = function() {
+    panel.style.display = "none";
+    if (game) game.confirmMovePath(false);
+    if (typeof renderGameState === "function") renderGameState();
+    if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  };
+  document.getElementById("btn-move-map").onclick = function() {
+    panel.style.display = "none";
+    if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  };
+};
+
+window.onDiscoveryPrompt = function(names) {
+  const modal = document.getElementById("discovery-modal");
+  if (!modal) return;
+  const body = document.getElementById("discovery-body");
+  if (body) body.innerHTML = "Hai scoperto: <strong>" + names.join(", ") + "</strong>";
+  modal.classList.remove("hidden");
+  modal.style.display = "flex";
+};
+
+window.onSpellTargetPrompt = function(pending) {
+  let panel = document.getElementById("spell-target-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "spell-target-panel";
+    panel.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:2600;background:rgba(13,27,42,0.95);border:1px solid #b39ddb;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-width:260px;";
+    document.body.appendChild(panel);
+  }
+  const names = (pending.targets || []).map(function(t) { return t.name; }).join(", ");
+  var canConfirm = pending.selected >= pending.need;
+  panel.innerHTML =
+    "<div style='font-weight:700;color:#b39ddb;'>" + (pending.card && pending.card.name) + "</div>" +
+    "<div>Bersagli: <strong>" + pending.selected + "/" + pending.need + "</strong> — " + names + "</div>" +
+    "<div style='display:flex;gap:8px;'>" +
+    "<button class='btn btn-primary' id='btn-spell-ok'" + (canConfirm ? "" : " disabled style='opacity:0.5'") + ">Conferma</button>" +
+    "<button class='btn' id='btn-spell-cancel'>Annulla</button></div>";
+  panel.style.display = "flex";
+  document.getElementById("btn-spell-ok").onclick = function() {
+    if (!canConfirm) return;
+    panel.style.display = "none";
+    if (game) game.confirmSpellCast(true);
+    if (typeof renderGameState === "function") renderGameState();
+    if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  };
+  document.getElementById("btn-spell-cancel").onclick = function() {
+    panel.style.display = "none";
+    if (game) game.confirmSpellCast(false);
+    if (typeof renderGameState === "function") renderGameState();
+    if (typeof MapRenderer !== "undefined") MapRenderer.render();
+  };
 };
 

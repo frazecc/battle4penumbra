@@ -43,7 +43,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v031</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v032</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -238,6 +238,15 @@
     <p id="event-detail-narrative" style="line-height:1.55;margin:0 0 18px;color:var(--text);"></p>
     <p style="margin:0 0 8px;font-size:0.85rem;color:var(--text-dim);">Cosa fai?</p>
     <div id="event-detail-choices"></div>
+  </div>
+</div>
+
+
+<div id="discovery-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);display:none;align-items:center;justify-content:center;z-index:2550;">
+  <div style="background:var(--bg2);border:1px solid #81C784;border-radius:16px;padding:24px;max-width:420px;width:92%;">
+    <h2 style="color:#81C784;margin:0 0 12px;font-size:1.15rem;">Esplorazione</h2>
+    <p id="discovery-body" style="line-height:1.55;margin:0 0 16px;"></p>
+    <button class="btn btn-primary" style="width:100%" onclick="document.getElementById('discovery-modal').style.display='none';document.getElementById('discovery-modal').classList.add('hidden');">OK</button>
   </div>
 </div>
 

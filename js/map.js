@@ -128,25 +128,32 @@ const MapRenderer = {
     // Pulse per caselle legali (0.2–0.45)
     const pulse = 0.22 + 0.18 * (0.5 + 0.5 * Math.sin(Date.now() / 280));
 
-    // In modalità Muovi: evidenzia le caselle legali (adiacenti libere, non montagna)
+    // In modalità Muovi: tutte le celle raggiungibili (pathfinding)
     if (this.game?.moveMode && this.game.selectedUnit && !this.game.selectedUnit.isWithered) {
       const u = this.game.selectedUnit;
-      const dirs = [[1,0], [0,1], [-1,1], [-1,0], [0,-1], [1,-1]];
-      for (const [dq, dr] of dirs) {
-        const nq = u.q + dq;
-        const nr = u.r + dr;
-        const key = nq + "," + nr;
-        if (!CELL_TYPE.has(key)) continue;
-        if (CELL_TYPE.get(key) === "mountain") continue;
-        if (this.game.getUnitAt(nq, nr)) continue;
-        this._highlightHex(nq, nr, "#69F0AE");
-        this._fillHexSoft(nq, nr, "rgba(105, 240, 174, " + pulse + ")");
+      const ent = this.game.currentEntity;
+      if (typeof this.game.getReachableCells === "function" && ent) {
+        const { cells, attackTargets } = this.game.getReachableCells(u, ent);
+        for (const [key, info] of cells) {
+          const [nq, nr] = key.split(",").map(Number);
+          this._highlightHex(nq, nr, "#69F0AE");
+          this._fillHexSoft(nq, nr, "rgba(105, 240, 174, " + pulse + ")");
+        }
+        for (const at of (attackTargets || [])) {
+          this._highlightHex(at.q, at.r, "#EF5350");
+          this._fillHexSoft(at.q, at.r, "rgba(239, 83, 80, " + pulse + ")");
+        }
+      }
+      // Path in attesa / proposto
+      const path = this.game.pendingMovePath && this.game.pendingMovePath.path;
+      if (path && path.length) {
+        this._drawMovePath(u.q, u.r, path);
       }
       if (!this._pulseScheduled) {
         this._pulseScheduled = true;
         requestAnimationFrame(() => {
           this._pulseScheduled = false;
-          if (this.game?.moveMode) this.render();
+          if (this.game?.moveMode || this.game?.pendingMovePath) this.render();
         });
       }
     }
@@ -506,6 +513,34 @@ const MapRenderer = {
       const my = e.clientY - rect.top;
       this.hoverHex = this.pixelToAxial(mx, my);
       this.render();
+    });
+
+    c.addEventListener("contextmenu", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!this.game || this.game.phase !== "playing") return;
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const { q, r } = this.pixelToAxial(mx, my);
+      const unit = this.game.getUnitAt(q, r);
+      if (unit && typeof showCardDetail === "function") {
+        const owner = this.game.getEntityById(unit.ownerId);
+        const isOwn = owner && owner.isHuman;
+        showCardDetail(unit, { fromField: !!isOwn, readOnly: !isOwn });
+        return;
+      }
+      const type = CELL_TYPE.get(q + "," + r);
+      if (type && typeof showCardDetail === "function") {
+        const name = (this.game.tileDisplayName && this.game.tileDisplayName(type)) || type;
+        showCardDetail({
+          name: name,
+          type: "tessera",
+          color: "-",
+          cost: "-",
+          effect: "Tipo di cella: " + name + " (" + q + "," + r + ")"
+        }, { readOnly: true });
+      }
     });
 
     c.addEventListener("click", e => {

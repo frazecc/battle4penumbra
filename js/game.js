@@ -106,6 +106,9 @@ class GameState {
     this.pendingTempleOverwrite = null; // { card, q, r, victimInstanceId }
     this.pendingEnemyTempleMove = null; // { unitInstanceId, q, r }
     this.pendingCardPick = null; // { options: [card,card], entityId }
+    this.pendingMovePath = null; // { unitInstanceId, path: [[q,r],...], cost }
+    this.pendingSpellTarget = null; // { card, targets: [], remaining, need }
+
 
     this._initEntities();
     this._assignTemples();
@@ -698,24 +701,76 @@ class GameState {
   }
 
   selectTargetUnit(unit) {
-    if (!this.targetMode) return false;
+    if (!this.targetMode || !unit) return false;
     const e = this.currentEntity;
     const { card, effectId } = this.targetMode;
+    const need = card.multiTarget || 1;
+    // Evita duplicati
+    if (this.targetMode.targets.some(t => t.instanceId === unit.instanceId)) {
+      this.addLog("Bersaglio già selezionato.");
+      return false;
+    }
     this.targetMode.targets.push(unit);
-    this.targetMode.remaining--;
-    if (this.targetMode.remaining <= 0) {
-      const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
-      if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); this.targetMode = null; return false; }
-      e.pay(cost);
-      e.hand = e.hand.filter(c => c.instanceId !== card.instanceId);
-      e.graveyard.push(card);
-      this.targetMode.targets.forEach(t => this._resolveEffect(effectId, e, t));
-      this.addLog(e.name + " lancia " + card.name + "!", true);
-      this.targetMode = null;
-      this.selectedCard = null;
+    this.targetMode.remaining = need - this.targetMode.targets.length;
+    this.addLog("Bersaglio: " + unit.name + " (" + this.targetMode.targets.length + "/" + need + ")");
+    // Umano: conferma esplicita; IA: auto-conferma quando completo
+    if (e.isHuman) {
+      this.pendingSpellTarget = {
+        card, effectId,
+        targets: this.targetMode.targets.slice(),
+        need,
+        selected: this.targetMode.targets.length
+      };
+      if (typeof window !== "undefined" && window.onSpellTargetPrompt) {
+        window.onSpellTargetPrompt(this.pendingSpellTarget);
+      }
       return true;
     }
-    this.addLog("Bersaglio selezionato. Ne restano " + this.targetMode.remaining);
+    if (this.targetMode.remaining <= 0) {
+      return this.confirmSpellCast(true);
+    }
+    return true;
+  }
+
+  confirmSpellCast(yes) {
+    if (!this.targetMode && !this.pendingSpellTarget) return false;
+    const e = this.currentEntity;
+    const tm = this.targetMode;
+    const card = (tm && tm.card) || (this.pendingSpellTarget && this.pendingSpellTarget.card);
+    const effectId = (tm && tm.effectId) || (this.pendingSpellTarget && this.pendingSpellTarget.effectId);
+    const targets = (tm && tm.targets) || (this.pendingSpellTarget && this.pendingSpellTarget.targets) || [];
+    const need = (card && (card.multiTarget || 1)) || 1;
+    this.pendingSpellTarget = null;
+    if (!yes) {
+      // Rimuovi ultimo bersaglio o annulla tutto
+      if (tm && tm.targets.length) {
+        tm.targets.pop();
+        tm.remaining = need - tm.targets.length;
+        this.addLog("Bersaglio rimosso. " + tm.targets.length + "/" + need);
+        if (tm.targets.length && e.isHuman && typeof window !== "undefined" && window.onSpellTargetPrompt) {
+          this.pendingSpellTarget = { card, effectId, targets: tm.targets.slice(), need, selected: tm.targets.length };
+          window.onSpellTargetPrompt(this.pendingSpellTarget);
+        }
+      } else {
+        this.targetMode = null;
+        this.selectedCard = null;
+        this.addLog("Lancio annullato.");
+      }
+      return false;
+    }
+    if (targets.length < need) {
+      this.addLog("Seleziona ancora " + (need - targets.length) + " bersaglio/i.");
+      return false;
+    }
+    const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
+    if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); this.targetMode = null; return false; }
+    e.pay(cost);
+    e.hand = e.hand.filter(c => c.instanceId !== card.instanceId);
+    e.graveyard.push(card);
+    targets.forEach(t => this._resolveEffect(effectId, e, t));
+    this.addLog(e.name + " lancia " + card.name + "!", true);
+    this.targetMode = null;
+    this.selectedCard = null;
     return true;
   }
 
@@ -794,6 +849,10 @@ class GameState {
       this.addLog("Movimento annullato.");
       return false;
     }
+    if (p.path && p.path.length) {
+      this.pendingMovePath = { unitInstanceId: unit.instanceId, path: p.path, cost: p.cost || 0 };
+      return this.confirmMovePath(true);
+    }
     return this._commitMove(unit, e, p.q, p.r, p.cost || 0);
   }
 
@@ -816,67 +875,216 @@ class GameState {
     return this.playCardOnHex(p.q, p.r);
   }
 
+
+  /** Nome leggibile di una cella (Desolazione al posto di plain) */
+  tileDisplayName(type) {
+    if (!type || type === "plain") return "Desolazione";
+    const def = (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) ? TILE_TYPE_DEFS[type] : null;
+    if (def && def.name) return def.name;
+    const map = {
+      mountain: "Montagna", temple: "Tempio", city: "Altare",
+      desolazione: "Desolazione"
+    };
+    return map[type] || type;
+  }
+
+  isEventTileType(type) {
+    if (!type || type === "plain" || type === "desolazione" || type === "mountain" || type === "temple") return false;
+    if (type === "city") return false; // altare: strutturale
+    if (typeof EVENT_TILE_TYPES !== "undefined" && EVENT_TILE_TYPES.includes(type)) return true;
+    return type === "teletrasporto";
+  }
+
+  /**
+   * Celle raggiungibili entro maxSteps (mana + eventuale passo gratis).
+   * Prima cella non scoperta termina il path (avvizzisce).
+   * Non attraversa montagne né celle occupate (nemico = destinazione di attacco solo se adiacente in tryMove).
+   */
+  getReachableCells(unit, entity) {
+    if (!unit || !entity) return { cells: new Map(), attackTargets: [] };
+    const freeFirst = !unit.movedThisTurn;
+    const maxSteps = freeFirst ? (entity.mana + 1) : entity.mana;
+    if (maxSteps <= 0 && !freeFirst) return { cells: new Map(), attackTargets: [] };
+
+    const dirs = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+    // key -> { cost, path: [[q,r],...] } cost = mana spent
+    const best = new Map();
+    const startKey = unit.q + "," + unit.r;
+    // BFS by steps
+    const queue = [{ q: unit.q, r: unit.r, steps: 0, manaCost: 0, path: [], blocked: false }];
+    best.set(startKey, { cost: 0, path: [], steps: 0 });
+
+    const attackTargets = [];
+
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur.blocked) continue;
+      if (cur.steps >= maxSteps) continue;
+      for (const [dq, dr] of dirs) {
+        const nq = cur.q + dq, nr = cur.r + dr;
+        const key = nq + "," + nr;
+        if (!CELL_TYPE.has(key)) continue;
+        const ct = CELL_TYPE.get(key);
+        if (ct === "mountain") continue;
+
+        const occ = this.getUnitAt(nq, nr);
+        const nextSteps = cur.steps + 1;
+        const nextMana = cur.manaCost + (cur.steps === 0 && freeFirst ? 0 : 1);
+        // mana check: if not free first step, need mana; after first free, each costs 1
+        if (!freeFirst && nextMana > entity.mana) continue;
+        if (freeFirst && nextMana > entity.mana) continue;
+
+        if (occ) {
+          if (occ.ownerId !== entity.id && nextSteps === 1) {
+            // attacco solo adiacente (1 passo dal punto di partenza del path corrente = solo se cur is start)
+            // User: combat when contending hex - only adjacent from current position for attack
+            if (cur.steps === 0) {
+              attackTargets.push({ q: nq, r: nr, unit: occ });
+            }
+          }
+          continue; // non si attraversa
+        }
+
+        const undiscovered = !this.isCellDiscovered(nq, nr, entity);
+        const nextPath = cur.path.concat([[nq, nr]]);
+        const prev = best.get(key);
+        if (prev && prev.cost <= nextMana && prev.steps <= nextSteps) continue;
+        best.set(key, { cost: nextMana, path: nextPath, steps: nextSteps });
+        // Se non scoperta, ci si può fermare qui ma non proseguire oltre
+        if (!undiscovered) {
+          queue.push({ q: nq, r: nr, steps: nextSteps, manaCost: nextMana, path: nextPath, blocked: false });
+        }
+      }
+    }
+    best.delete(startKey);
+    return { cells: best, attackTargets };
+  }
+
+  /** Esegue il path confermato (sposta sulla destinazione, paga mana, avvizzisce se serve) */
+  confirmMovePath(yes) {
+    if (!yes) {
+      this.pendingMovePath = null;
+      this.addLog("Movimento annullato.");
+      return false;
+    }
+    const p = this.pendingMovePath;
+    if (!p) return false;
+    const e = this.currentEntity;
+    const unit = e.field.find(u => u.instanceId === p.unitInstanceId);
+    this.pendingMovePath = null;
+    if (!unit) return false;
+    if ((p.cost || 0) > e.mana) {
+      this.addLog("Mana insufficiente!");
+      return false;
+    }
+    const dest = p.path[p.path.length - 1];
+    if (!dest) return false;
+    // Paga mana
+    e.pay(p.cost || 0);
+    const [dq, dr] = dest;
+    unit.q = Number(dq);
+    unit.r = Number(dr);
+    unit.movedThisTurn = true;
+    this._revealAround(e, unit.q, unit.r, 2);
+    // Avvizzisce se destinazione o path ha attraversato inesplorato: destinazione non scoperta
+    // Nota: isCellDiscovered prima del flip fine turno
+    if (!this.isCellDiscovered(unit.q, unit.r, e)) {
+      unit.isWithered = true;
+      this.addLog(unit.name + " si muove su (" + unit.q + "," + unit.r + ") — territorio inesplorato: avvizzita. Costo mana: " + (p.cost || 0));
+    } else {
+      this.addLog(unit.name + " si muove su (" + unit.q + "," + unit.r + ") (path " + p.path.length + ", mana " + (p.cost || 0) + ")");
+    }
+    this.selectedUnit = null;
+    this.moveMode = false;
+    return true;
+  }
+
+  /** Imposta path in attesa di conferma */
+  proposeMovePath(unit, path, cost) {
+    this.pendingMovePath = {
+      unitInstanceId: unit.instanceId,
+      path: path.map(([q, r]) => [Number(q), Number(r)]),
+      cost: cost || 0
+    };
+    if (typeof window !== "undefined" && window.onMovePathPrompt) {
+      window.onMovePathPrompt(this.pendingMovePath, unit);
+    }
+    return true;
+  }
+
   tryMoveOrAttack(q, r) {
     const e = this.currentEntity;
     if (!this.selectedUnit || !this.moveMode) return false;
-    // Riallinea al riferimento live sul campo (evita copie stale)
     const unit = e.field.find(u => u.instanceId === this.selectedUnit.instanceId) || this.selectedUnit;
     this.selectedUnit = unit;
     q = Number(q); r = Number(r);
     unit.q = Number(unit.q); unit.r = Number(unit.r);
 
-    // Avvizzita: non può fare azioni (solo difendere)
     if (unit.isWithered) {
       this.addLog(unit.name + " è avvizzita e non può agire questo turno.");
       this.moveMode = false;
       this.selectedUnit = null;
       return false;
     }
-
-    // Se sei su cella non scoperta non puoi muoverti oltre questo turno
     if (!this.isCellDiscovered(unit.q, unit.r, e)) {
       this.addLog("Cella inesplorata: non puoi muoverti oltre in questo turno! (si scopre a fine turno)");
       this.moveMode = false;
       this.selectedUnit = null;
       return false;
     }
-    const dist = hexDistance(unit.q, unit.r, q, r);
-    if (dist !== 1) {
-      this.addLog("Solo 1 passo alla volta! (da " + unit.q + "," + unit.r + " a " + q + "," + r + " dist=" + dist + ")");
-      return false; // NON uscire da moveMode
-    }
-    if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }
-
-    // Primo movimento del turno della creatura è gratuito
-    const cost = unit.movedThisTurn ? 1 : 0;
-    if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
 
     const targetUnit = this.getUnitAt(q, r);
-    if (!targetUnit) {
-      // Avviso tempio nemico
-      const enemyTemple = this.entities.find(ent => !ent.isFallen && ent.id !== e.id && ent.templeKey === (q + "," + r));
-      if (enemyTemple && e.isHuman && !this.pendingEnemyTempleMove) {
-        this.pendingEnemyTempleMove = { unitInstanceId: unit.instanceId, q, r, cost };
-        if (typeof window !== "undefined" && window.onEnemyTempleWarning) {
-          window.onEnemyTempleWarning({ templeOwner: enemyTemple.name, unitName: unit.name, q, r });
-        }
-        return true;
-      }
-      return this._commitMove(unit, e, q, r, cost);
+    // Attacco: solo adiacente
+    if (targetUnit) {
+      if (targetUnit.ownerId === e.id) { this.addLog("Cella alleata!"); return false; }
+      const dist = hexDistance(unit.q, unit.r, q, r);
+      if (dist !== 1) { this.addLog("Puoi attaccare solo una creatura adiacente!"); return false; }
+      const cost = unit.movedThisTurn ? 1 : 0;
+      if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
+      e.pay(cost);
+      unit.movedThisTurn = true;
+      unit.isWithered = true;
+      const originQ = unit.q, originR = unit.r;
+      this._resolveCombat(unit, targetUnit, originQ, originR);
+      this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
+      this.selectedUnit = null;
+      this.moveMode = false;
+      this.pendingMovePath = null;
+      return true;
     }
-    if (targetUnit.ownerId === e.id) { this.addLog("Cella alleata!"); return false; }
 
-    // Attacco
-    e.pay(cost);
-    unit.movedThisTurn = true;
-    unit.isWithered = true; // attaccare avvizzisce
-    const originQ = unit.q, originR = unit.r;
-    this._resolveCombat(unit, targetUnit, originQ, originR);
-    this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
-    this.selectedUnit = null;
-    this.moveMode = false;
-    return true;
+    if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }
+
+    // Movimento multi-passo: calcola path a costo minimo
+    const { cells } = this.getReachableCells(unit, e);
+    const key = q + "," + r;
+    const info = cells.get(key);
+    if (!info) {
+      this.addLog("Cella non raggiungibile con il mana attuale.");
+      return false;
+    }
+
+    // Avviso tempio nemico sulla destinazione
+    const enemyTemple = this.entities.find(ent => !ent.isFallen && ent.id !== e.id && ent.templeKey === key);
+    if (enemyTemple && e.isHuman && !this.pendingEnemyTempleMove) {
+      this.pendingEnemyTempleMove = {
+        unitInstanceId: unit.instanceId, q, r, cost: info.cost,
+        path: info.path
+      };
+      if (typeof window !== "undefined" && window.onEnemyTempleWarning) {
+        window.onEnemyTempleWarning({ templeOwner: enemyTemple.name, unitName: unit.name, q, r });
+      }
+      return true;
+    }
+
+    // Proponi path (umano conferma); IA esegue subito
+    if (e.isHuman) {
+      return this.proposeMovePath(unit, info.path, info.cost);
+    }
+    this.pendingMovePath = { unitInstanceId: unit.instanceId, path: info.path, cost: info.cost };
+    return this.confirmMovePath(true);
   }
+
 
   getUnitAt(q, r) {
     for (const ent of this.entities) {
@@ -1335,16 +1543,24 @@ class GameState {
 
     // 1) Flip tutte le celle occupate da creature alleate
     if (current.field.length > 0) {
+      const newlySpecial = [];
       current.field.forEach(u => {
         const key = u.q + "," + u.r;
         const wasNew = !this.flippedCells.has(key);
         this.flippedCells.add(key);
         if (wasNew) {
           const t = CELL_TYPE.get(key) || "plain";
-          const def = (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[t]) ? TILE_TYPE_DEFS[t] : null;
-          this.addLog("Esagono scoperto (" + u.q + "," + u.r + "): " + (def ? def.name : t), true);
+          const name = this.tileDisplayName(t);
+          this.addLog("Esagono scoperto (" + u.q + "," + u.r + "): " + name, true);
+          if (this.isEventTileType(t) || t === "teletrasporto") {
+            newlySpecial.push(name);
+          }
         }
       });
+      if (newlySpecial.length && current.isHuman && typeof window !== "undefined" && window.onDiscoveryPrompt) {
+        const unique = [...new Set(newlySpecial)];
+        window.onDiscoveryPrompt(unique);
+      }
 
       // 2) Teletrasporti: sposta sui portali, poi passo obbligatorio (manuale per umano)
       this._endTurnEntityId = current.id;

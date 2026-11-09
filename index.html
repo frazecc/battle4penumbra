@@ -15,10 +15,11 @@
       <p class="subtitle">Accedi o registrati per giocare</p>
       <div id="auth-error" class="auth-error"></div>
       <div id="session-confirm" class="hidden">
-        <p style="text-align:center;margin-bottom:20px;">Sei ancora <strong id="session-username"></strong>?</p>
-        <div style="display:flex;gap:12px;">
-          <button id="btn-sono-io" class="btn btn-primary" style="flex:1">Sono io</button>
-          <button id="btn-non-sono-io" class="btn" style="flex:1">Non sono io</button>
+        <p id="session-confirm-title" style="text-align:center;font-size:1.15rem;margin:0 0 10px;color:var(--accent);">Riconosco questa presenza… sei tu?</p>
+        <p id="session-confirm-sub" style="text-align:center;margin:0 0 20px;opacity:0.85;">Presenza rilevata: <strong id="session-username"></strong></p>
+        <div style="display:flex;gap:12px;flex-direction:column;">
+          <button id="btn-sono-io" class="btn btn-primary" style="width:100%">Sono io</button>
+          <button id="btn-non-sono-io" class="btn" style="width:100%">Non sono io</button>
         </div>
       </div>
       <div id="auth-forms">
@@ -44,7 +45,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v035</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v036</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>

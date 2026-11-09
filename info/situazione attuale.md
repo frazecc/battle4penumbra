@@ -1,12 +1,19 @@
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 035 – VERSION: v035
+BATTLE FOR PENUMBRA – consegna 036 – VERSION: v036
 ================================================================================
-- APP_VERSION e badge sito → v035 (fix bug che mostrava ancora v031)
-- Icone templi: ☁ Cielo, 🌙 Luna, ⚔ Guerra, 💧 Acqua — più grandi + alone colorato
-- Badge tempio sulle creature più visibile
-- Tasto destro su esagono: nome luogo + descrizione regole + creature presenti
-- IA più intelligente: artefatto, evocazioni di valore, magie su minacce,
-  attacchi favorevoli, movimento verso umani/altare
+FIX resume partita
+- resumeSavedGame: init mappa, gameUIStarted, pulizia pending, avvio IA se tocca
+- carica da cloud o localStorage
 
-FILE: js/app.js, js/data.js, js/map.js, js/game.js, index.html
+LOGIN
+- Se c'è sessione: "Riconosco questa presenza… sei tu?"
+  - Sono io → home
+  - Non sono io → form login/password
+
+MAPPA
+- Creature disegnate come carte miniature
+  - ATK in basso a sinistra, PV in basso a destra
+  - Icona tempio, striscia colore, bordo oro/rosso
+
+FILE: js/app.js, js/map.js, index.html
 ================================================================================

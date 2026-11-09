@@ -451,86 +451,116 @@ const MapRenderer = {
     const { x, y } = this.axialToPixel(unit.q, unit.r);
     const cx = x * this.scale + this.offsetX;
     const cy = y * this.scale + this.offsetY;
-    const radius = this.size * this.scale * 0.45;
-
+    const s = this.size * this.scale;
     const ctx = this.ctx;
-    // Circle
+    // Carta in miniatura (rettangolo)
+    const w = s * 1.15;
+    const h = s * 1.35;
+    const left = cx - w / 2;
+    const top = cy - h / 2;
+    const isHumanOwner = owner && owner.isHuman;
+    const isFallen = owner && owner.isFallen;
+    const border = isFallen ? "#78909C" : (isHumanOwner ? "#FFD54F" : "#EF5350");
+    const fill = isFallen ? "#37474F" : (isHumanOwner ? "#1B3A4B" : "#3E1F1F");
+
+    // Ombra
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    ctx.fillRect(left + 2, top + 2, w, h);
+
+    // Corpo carta
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = border;
+    ctx.lineWidth = Math.max(2, 2.2 * this.scale);
+    const r = Math.max(4, 5 * this.scale);
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-    if (unit.isWithered) {
-      ctx.fillStyle = "#78909C"; // grigio per avvizzita
-      ctx.strokeStyle = "#546E7A";
-    } else {
-      ctx.fillStyle = owner.isHuman ? "#FFD54F" : "#42A5F5";
-      ctx.strokeStyle = owner.isHuman ? "#FF8F00" : "#1565C0";
-    }
+    ctx.moveTo(left + r, top);
+    ctx.arcTo(left + w, top, left + w, top + h, r);
+    ctx.arcTo(left + w, top + h, left, top + h, r);
+    ctx.arcTo(left, top + h, left, top, r);
+    ctx.arcTo(left, top, left + w, top, r);
+    ctx.closePath();
     ctx.fill();
-    ctx.lineWidth = 2;
     ctx.stroke();
 
-    // Simbolo avvizzita
-    if (unit.isWithered) {
-      ctx.fillStyle = "#FFCCBC";
-      ctx.font = `bold ${Math.max(10, 12 * this.scale)}px Arial`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("Z", cx, cy);
-    }
+    // Striscia colore in alto
+    let col = "#90A4AE";
+    if (unit.color === "white") col = "#ECEFF1";
+    else if (unit.color === "red") col = "#EF5350";
+    else if (unit.color === "black") col = "#7E57C2";
+    else if (unit.color === "blue") col = "#42A5F5";
+    else if (unit.color === "green") col = "#66BB6A";
+    else if (unit.color === "yellow") col = "#FFD54F";
+    ctx.fillStyle = col;
+    ctx.fillRect(left + 2, top + 2, w - 4, h * 0.18);
 
-    // Artefatto: corona dorata sopra
-    if (owner.artifactAttachedTo === unit.instanceId || unit.hasArtifact || unit.type === "artefatto") {
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
-      ctx.strokeStyle = "#FFD700";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-      // Corona
-      ctx.font = `${Math.max(14, 18 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", Arial`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "bottom";
-      ctx.fillText("👑", cx, cy - radius - 2);
-    }
-
-    // Shield badge
-    if (unit.shields > 0) {
-      ctx.fillStyle = "#42A5F5";
-      ctx.beginPath();
-      ctx.arc(cx + radius * 0.7, cy - radius * 0.7, 8 * this.scale, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.max(8, 9 * this.scale)}px Arial`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(String(unit.shields), cx + radius * 0.7, cy - radius * 0.7);
-    }
-
-    // Icona tempio proprietario (sempre, con fallback)
+    // Icona tempio proprietario
     let tIcon = owner.templeIcon;
     if (!tIcon && owner.templeKey && typeof TEMPLES !== "undefined") {
       const t = TEMPLES[owner.templeKey];
       if (t) tIcon = t.icon || t.label;
     }
     if (tIcon) {
-      // Badge tempio ben visibile sopra la creatura
-      ctx.beginPath();
-      ctx.arc(cx, cy - radius * 0.55, Math.max(10, 12 * this.scale), 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(13,27,42,0.85)";
-      ctx.fill();
-      ctx.strokeStyle = "#FFD54F";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
-      ctx.font = `${Math.max(16, 20 * this.scale)}px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial`;
+      ctx.font = Math.max(14, 16 * this.scale) + "px \"Segoe UI Emoji\",\"Apple Color Emoji\",Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(tIcon, cx, cy - radius * 0.55);
+      ctx.fillText(tIcon, cx, top + h * 0.38);
     }
-    // ATK / PV in basso
-    const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
-    ctx.fillStyle = "#0D1B2A";
-    ctx.font = `bold ${Math.max(11, 13 * this.scale)}px Arial`;
+
+    // Nome corto
+    const nm = (unit.name || "?").split(" ")[0];
+    ctx.fillStyle = "#E0E0E0";
+    ctx.font = "bold " + Math.max(8, 9 * this.scale) + "px Arial";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(`${atk}/${unit.currentHp || unit.hp || 0}`, cx, cy + radius * 0.35);
+    ctx.fillText(nm.substring(0, 10), cx, top + h * 0.58);
+
+    // ATK basso sx, PV basso dx
+    const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
+    const hp = unit.currentHp !== undefined ? unit.currentHp : (unit.hp || 0);
+    const pad = Math.max(4, 5 * this.scale);
+    ctx.font = "bold " + Math.max(10, 12 * this.scale) + "px Arial";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = "#FFAB91";
+    ctx.textAlign = "left";
+    ctx.fillText(String(atk), left + pad, top + h - pad + 1);
+    ctx.fillStyle = "#A5D6A7";
+    ctx.textAlign = "right";
+    ctx.fillText(String(hp), left + w - pad, top + h - pad + 1);
+
+    // Scudi
+    if (unit.shields > 0) {
+      ctx.fillStyle = "#42A5F5";
+      ctx.beginPath();
+      ctx.arc(left + w - pad, top + h * 0.28, Math.max(7, 8 * this.scale), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold " + Math.max(8, 9 * this.scale) + "px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(unit.shields), left + w - pad, top + h * 0.28);
+    }
+
+    // Avvizzita
+    if (unit.isWithered) {
+      ctx.fillStyle = "rgba(255,138,101,0.35)";
+      ctx.fillRect(left, top, w, h);
+      ctx.fillStyle = "#FFCCBC";
+      ctx.font = "bold " + Math.max(9, 10 * this.scale) + "px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("Z", cx, cy);
+    }
+
+    // Artefatto
+    if (owner.artifactAttachedTo === unit.instanceId || unit.hasArtifact) {
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(left - 1, top - 1, w + 2, h + 2);
+      ctx.font = Math.max(12, 14 * this.scale) + "px \"Segoe UI Emoji\",Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("👑", cx, top - 1);
+    }
   },
 
   _highlightHex(q, r, color) {

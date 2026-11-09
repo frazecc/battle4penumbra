@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "035";
+const APP_VERSION = "036";
 
 let game = null;
 let currentScreen = "auth";
@@ -265,8 +265,8 @@ function showScreen(id) {
 function initAuth() {
   const session = getSession();
   if (session) {
-    if (needsSessionConfirm()) showSessionConfirm(session);
-    else enterApp(session);
+    // Sempre: "riconosco questa presenza"
+    showSessionConfirm(session);
   } else {
     showScreen("auth");
   }
@@ -275,8 +275,14 @@ function initAuth() {
 function showSessionConfirm(session) {
   showScreen("auth");
   document.getElementById("auth-forms").classList.add("hidden");
-  document.getElementById("session-confirm").classList.remove("hidden");
-  document.getElementById("session-username").textContent = session.username;
+  const sc = document.getElementById("session-confirm");
+  sc.classList.remove("hidden");
+  const nameEl = document.getElementById("session-username");
+  if (nameEl) nameEl.textContent = session.username;
+  const title = document.getElementById("session-confirm-title");
+  if (title) title.textContent = "Riconosco questa presenza… sei tu?";
+  const sub = document.getElementById("session-confirm-sub");
+  if (sub) sub.innerHTML = "Presenza rilevata: <strong>" + session.username + "</strong>";
 }
 
 function enterApp(user) {
@@ -1231,23 +1237,68 @@ function clearPersistedGame() {
   localStorage.removeItem(saveGameKey());
 }
 
-function resumeSavedGame() {
-  const data = loadPersistedGame();
+async function resumeSavedGame(dataOpt) {
+  let data = dataOpt || null;
+  if (!data && typeof cloudLoadGame === "function") {
+    try { data = await cloudLoadGame(); } catch (e) { console.warn(e); }
+  }
+  if (!data) data = (typeof loadPersistedGame === "function") ? loadPersistedGame() : null;
   if (!data) {
-    alert("Nessuna partita salvata per questo account su questo dispositivo.");
+    alert("Nessuna partita salvata per questo account.");
     return false;
   }
-  game = GameState.fromSaveData(data);
+  try {
+    game = GameState.fromSaveData(data);
+  } catch (err) {
+    console.error(err);
+    alert("Salvataggio non leggibile: " + err.message);
+    return false;
+  }
   window.game = game;
-  // UI
-  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  const screen = document.getElementById("screen-game");
-  if (screen) screen.classList.add("active");
+  // Pulisci stati UI / async bloccanti
+  game.selectedCard = null;
+  game.selectedUnit = null;
+  game.moveMode = false;
+  game.playMode = false;
+  game.attachMode = false;
+  game.targetMode = null;
+  game.sacrificeMode = false;
+  game.pendingMovePath = null;
+  game.pendingCardPick = null;
+  game.pendingEventDetail = null;
+  game.pendingEventChoice = null;
+  game.pendingTeleportStep = null;
+  game.pendingTeleportSteps = [];
+  game.pendingTempleOverwrite = null;
+  game.pendingEnemyTempleMove = null;
+  game.pendingSpellTarget = null;
+  game._aiTurnLock = false;
+  game._endTurnEntityId = null;
+  if (game.phase === "draft") {
+    // non supportiamo resume a metà draft in modo affidabile
+    alert("Il salvataggio è ancora in draft. Avvia una nuova partita.");
+    return false;
+  }
+  if (!game.phase || game.phase === "setup") game.phase = "playing";
+
+  gameUIStarted = true;
+  showScreen("game");
   if (typeof MapRenderer !== "undefined") {
     MapRenderer.init("gameCanvas", game);
+    setTimeout(() => { MapRenderer.center(); MapRenderer.render(); }, 50);
   }
   if (typeof renderGameState === "function") renderGameState();
-  game.addLog("Partita ripresa dal salvataggio.", true);
+  game.addLog("Partita ripresa dal salvataggio (v" + (typeof APP_VERSION !== "undefined" ? APP_VERSION : "?") + ").", true);
+  persistGame();
+
+  // Se tocca all'IA / caduto, fai ripartire il turno
+  if (game.phase === "playing" && game.currentEntity && !game.currentEntity.isHuman) {
+    setTimeout(() => {
+      if (game && game.phase === "playing" && game.currentEntity && !game.currentEntity.isHuman) {
+        game.runAITurn();
+      }
+    }, 600);
+  }
   return true;
 }
 
@@ -1415,14 +1466,9 @@ async function offerResumeOrNew(startNewFn) {
   const ok = document.getElementById("btn-resume-spoglie");
   const no = document.getElementById("btn-abandon-frammento");
   const close = () => { modal.style.display = "none"; modal.classList.add("hidden"); };
-  ok.onclick = () => {
+  ok.onclick = async () => {
     close();
-    if (typeof resumeSavedGame === "function") resumeSavedGame();
-    else {
-      game = GameState.fromSaveData(data);
-      window.game = game;
-      startGameUI();
-    }
+    await resumeSavedGame(data);
   };
   no.onclick = async () => {
     close();

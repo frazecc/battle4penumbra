@@ -20,11 +20,9 @@ var MapRenderer = {
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext("2d");
     this.game = gameState;
-    // Bind eventi una sola volta (evita listener multipli tra una partita e l'altra)
-    if (!this._eventsBound) {
-      this._bindEvents();
-      this._eventsBound = true;
-    }
+    // Rebind sempre: evita listener morti / canvas vecchio
+    this._bindEvents();
+    this._eventsBound = true;
     this.center();
     this.render();
   },
@@ -691,124 +689,121 @@ var MapRenderer = {
 
   _bindEvents() {
     const c = this.canvas;
+    if (!c) return;
+    // Rimuovi listener precedenti
+    if (this._onClick) {
+      c.removeEventListener("click", this._onClick);
+      c.removeEventListener("contextmenu", this._onContext);
+      c.removeEventListener("mousedown", this._onDown);
+      c.removeEventListener("mousemove", this._onMove);
+      c.removeEventListener("wheel", this._onWheel);
+      window.removeEventListener("mouseup", this._onUp);
+    }
 
-    c.addEventListener("mousedown", e => {
+    this._onDown = (e) => {
+      if (e.button !== 0) return;
       this.isDragging = true;
+      this._dragMoved = false;
       this.lastX = e.clientX;
       this.lastY = e.clientY;
-    });
-
-    window.addEventListener("mouseup", () => this.isDragging = false);
-
-    c.addEventListener("mousemove", e => {
+    };
+    this._onUp = () => { this.isDragging = false; };
+    this._onMove = (e) => {
       if (this.isDragging) {
-        this.offsetX += e.clientX - this.lastX;
-        this.offsetY += e.clientY - this.lastY;
+        const dx = e.clientX - this.lastX;
+        const dy = e.clientY - this.lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 3) this._dragMoved = true;
+        this.offsetX += dx;
+        this.offsetY += dy;
         this.lastX = e.clientX;
         this.lastY = e.clientY;
         this.render();
         return;
       }
-      // Hover
-      const rect = c.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      this.hoverHex = this.pixelToAxial(mx, my);
+      const { x, y } = this._eventToCanvasXY(e);
+      this.hoverHex = this.pixelToAxial(x, y);
       this.render();
-    });
-
-            c.addEventListener("contextmenu", e => {
+    };
+    this._onContext = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      // v043: tasto destro non fa nulla (niente dettagli, niente menu browser)
-    });
+    };
+    this._onWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      this.scale = Math.min(Math.max(this.scale * delta, 0.78), 2.8);
+      this.render();
+    };
+    this._onClick = (e) => {
+      if (e.button !== 0) return;
+      if (this._dragMoved) return; // era un drag, non un click
+      const g = this.game || window.game;
+      if (!g) return;
+      if (g.phase !== "playing" && g.phase !== "ended") return;
 
-c.addEventListener("click", e => {
-      if (!this.game) return;
-      if (this.game.phase !== "playing" && this.game.phase !== "ended") return;
-      const rect = c.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const { x: mx, y: my } = this._eventToCanvasXY(e);
       const { q, r } = this.pixelToAxial(mx, my);
-      if (!CELL_TYPE.has(`${q},${r}`)) return;
+      if (!CELL_TYPE.has(q + "," + r)) return;
 
-      // Flag: questo click non deve MAI aprire l'anteprima (dopo attach/move)
-      let suppressPreview = false;
-
-      if (this.game.phase === "playing") {
-        // 0a) Passo obbligatorio post-teletrasporto
-        if (this.game.pendingTeleportStep) {
-          this.game.completeTeleportStep(q, r);
-          if (typeof closeCardDetail === "function") closeCardDetail();
+      // Azioni di gioco solo in playing
+      if (g.phase === "playing") {
+        if (g.pendingTeleportStep) {
+          g.completeTeleportStep(q, r);
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
         }
-
-        // 0) Modalità Sacrificio Mostrissimo: clic su creatura propria → sacrifica
-        if (this.game.sacrificeMode) {
-          const human = this.game.entities.find(e => e.isHuman);
-          if (human && this.game.currentEntity && this.game.currentEntity.isHuman) {
+        if (g.sacrificeMode) {
+          const human = g.entities.find(en => en.isHuman);
+          if (human && g.currentEntity && g.currentEntity.isHuman) {
             const unit = human.field.find(u => u.q === q && u.r === r);
             if (unit) {
-              this.game.sacrificeUnitForMostrissimo(unit);
-              if (typeof closeCardDetail === "function") closeCardDetail();
+              g.sacrificeUnitForMostrissimo(unit);
               if (window.onGameUpdate) window.onGameUpdate();
               this.render();
               return;
             }
           }
         }
-
-        // 1) Giocare una carta sulla cella
-        if (this.game.playMode && this.game.selectedCard) {
-          this.game.playCardOnHex(q, r);
+        if (g.playMode && g.selectedCard) {
+          g.playCardOnHex(q, r);
           if (typeof closeCardDetail === "function") closeCardDetail();
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
         }
-
-        // 2) Modalità Muovi / Attacca
-        if (this.game.moveMode && this.game.selectedUnit) {
-          const ok = this.game.tryMoveOrAttack(q, r);
+        if (g.moveMode && g.selectedUnit) {
+          const ok = g.tryMoveOrAttack(q, r);
           if (typeof closeCardDetail === "function") closeCardDetail();
-          // Esci da moveMode solo se movimento/attacco COMPLETATO (non solo path proposto)
-          if (ok && !this.game.pendingMovePath) {
-            this.game.selectedUnit = null;
-            this.game.moveMode = false;
-            suppressPreview = true;
+          if (ok && !g.pendingMovePath) {
+            g.selectedUnit = null;
+            g.moveMode = false;
           }
           if (window.onGameUpdate) window.onGameUpdate();
           this.render();
           return;
         }
-
-        // 3) Bersaglio maledizione
-        if (this.game.targetMode) {
-          const anyUnit = this.game.getUnitAt(q, r);
+        if (g.targetMode) {
+          const anyUnit = g.getUnitAt(q, r);
           if (anyUnit) {
-            this.game.selectTargetUnit(anyUnit);
+            g.selectTargetUnit(anyUnit);
             if (typeof closeCardDetail === "function") closeCardDetail();
             if (window.onGameUpdate) window.onGameUpdate();
             this.render();
             return;
           }
         }
-
-        // 4) Lega Artefatto — SOLO attach, niente anteprima
-        if (this.game.attachMode && this.game.selectedCard && this.game.selectedCard.type === "artefatto") {
-          const human = this.game.entities.find(e => e.isHuman);
+        if (g.attachMode && g.selectedCard && g.selectedCard.type === "artefatto") {
+          const human = g.entities.find(en => en.isHuman);
           if (human) {
             const unit = human.field.find(u => u.q === q && u.r === r);
             if (unit) {
-              this.game.attachArtifactToUnit(unit.instanceId);
-              this.game.selectedUnit = null;
-              this.game.moveMode = false;
-              this.game.attachMode = false;
-              this.game.selectedCard = null;
+              g.attachArtifactToUnit(unit.instanceId);
+              g.selectedUnit = null;
+              g.moveMode = false;
+              g.attachMode = false;
+              g.selectedCard = null;
               if (typeof closeCardDetail === "function") closeCardDetail();
-              suppressPreview = true;
               if (window.onGameUpdate) window.onGameUpdate();
               this.render();
               return;
@@ -816,62 +811,39 @@ c.addEventListener("click", e => {
           }
         }
 
-        // 5) Click cella visibile: propria creatura → modalità Muovi; ispeziona luogo+unità
-        if (!suppressPreview && !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode && !this.game.sacrificeMode && !this.game.pendingTeleportStep) {
-          const human = this.game.entities.find(e => e.isHuman);
-          if (!human) { /* skip */ }
-          else {
-            const anyUnit = this.game.getUnitAt(q, r);
-            const keyHex = q + "," + r;
-            const cellType = CELL_TYPE.get(keyHex);
+        // Ispezione esagono (fog = nulla, eccezione Altare)
+        if (!g.moveMode && !g.playMode && !g.attachMode && !g.targetMode && !g.sacrificeMode && !g.pendingTeleportStep) {
+          const human = g.entities.find(en => en.isHuman);
+          if (human) {
+            const anyUnit = g.getUnitAt(q, r);
+            const cellType = CELL_TYPE.get(q + "," + r);
             const isAltar = cellType === "city" || (q === 0 && r === 0);
-            // Fog: niente, salvo propria creatura o Altare (dettagli luogo)
             const onOwnUnit = anyUnit && anyUnit.ownerId === human.id;
-            if (!onOwnUnit && !isAltar && !this.game.isVisibleTo(human, q, r)) {
-              // click nel fog: ignora
-            } else {
-              // In fog sull'altare: ispezione senza rivelare creature
-              if (isAltar && !this.game.isVisibleTo(human, q, r) && !onOwnUnit) {
-                if (typeof window.onHexInspect === "function") window.onHexInspect(q, r, null);
-                return;
-              }
-              // v043: solo ispezione; Muovi solo dal pulsante nel pannello
-              if (typeof window.onHexInspect === "function") {
-                const showUnit = anyUnit && (onOwnUnit || this.game.isVisibleTo(human, q, r));
+            const visible = g.isVisibleTo(human, q, r);
+            if (!visible && !isAltar && !onOwnUnit) return;
+            if (typeof window.onHexInspect === "function") {
+              const showUnit = anyUnit && (onOwnUnit || visible);
+              // Altare in fog: niente creature
+              if (isAltar && !visible && !onOwnUnit) {
+                window.onHexInspect(q, r, null);
+              } else {
                 window.onHexInspect(q, r, showUnit ? anyUnit : null);
               }
-              if (window.onGameUpdate) window.onGameUpdate();
-              this.render();
-              return;
             }
+            this.render();
           }
         }
       }
+    };
 
-      // 6) Dettagli creatura (alleata o nemica visibile) — mai durante un'azione
-      if (suppressPreview) return;
-      const inActionMode = this.game.moveMode || this.game.playMode || this.game.attachMode || this.game.targetMode || this.game.sacrificeMode || this.game.pendingTeleportStep;
-      if (!inActionMode) {
-        const anyUnit = this.game.getUnitAt(q, r);
-        if (anyUnit) {
-          const human = this.game.entities.find(e => e.isHuman);
-          const isOwn = human && anyUnit.ownerId === human.id;
-          const visible = isOwn || (human ? this.game.isVisibleTo(human, anyUnit.q, anyUnit.r) : true);
-          if (visible && typeof showCardDetail === "function") {
-            const readOnly = this.game.phase === "ended" || !isOwn;
-            showCardDetail(anyUnit, { fromField: true, readOnly: readOnly });
-          }
-        }
-      }
-    });
-
-    c.addEventListener("wheel", e => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      this.scale = Math.min(Math.max(this.scale * delta, 0.78), 2.8);
-      this.render();
-    }, { passive: false });
+    c.addEventListener("mousedown", this._onDown);
+    window.addEventListener("mouseup", this._onUp);
+    c.addEventListener("mousemove", this._onMove);
+    c.addEventListener("contextmenu", this._onContext);
+    c.addEventListener("click", this._onClick);
+    c.addEventListener("wheel", this._onWheel, { passive: false });
   }
+
 };
 
 window.MapRenderer = MapRenderer;

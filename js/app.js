@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "044";
+const APP_VERSION = "045";
 
 let game = null;
 let currentScreen = "auth";
@@ -1505,86 +1505,89 @@ async function offerResumeOrNew(startNewFn) {
 
 
 
+
 window.onHexInspect = function(q, r, unit) {
-  const g = window.game;
-  if (!g) return;
-  const key = q + "," + r;
-  const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
-  const human = g.entities.find(e => e.isHuman);
-  const discovered = g.isCellDiscovered(q, r, human);
-  let placeName, placeDesc;
-  if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0") {
-    placeName = "? Terreno inesplorato";
-    placeDesc = "Non ancora scoperto. Il tipo si rivela a fine turno se una creatura termina qui.";
-  } else {
-    placeName = (g.tileDisplayName && g.tileDisplayName(type)) || type;
-    placeDesc = "";
-    if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
-      placeName = (TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "") + (TILE_TYPE_DEFS[type].name || placeName);
-      placeDesc = TILE_TYPE_DEFS[type].desc || "";
-    }
-    if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
-      placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
-      placeDesc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || placeDesc;
-    }
-  }
-
-  let panel = document.getElementById("hex-inspect-panel");
-  if (!panel) {
-    panel = document.createElement("div");
-    panel.id = "hex-inspect-panel";
-    panel.style.cssText = "position:fixed;inset:0;z-index:2700;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;padding:20px;";
-    document.body.appendChild(panel);
-  }
-  const left = "<div style='flex:1;min-width:200px;background:#1B2838;border:1px solid #64FFDA;border-radius:12px;padding:16px;'>" +
-    "<div style='color:#64FFDA;font-weight:700;font-size:1.1rem;margin-bottom:8px;'>Luogo</div>" +
-    "<div style='font-size:1.05rem;margin-bottom:8px;'>" + placeName + "</div>" +
-    "<div style='opacity:0.75;font-size:0.85rem;margin-bottom:8px;'>(" + q + "," + r + ")</div>" +
-    "<div style='line-height:1.5;color:#E0D6C8;'>" + (placeDesc || "Nessuna descrizione.") + "</div></div>";
-
-  let right = "<div style='flex:1;min-width:200px;background:#1B2838;border:1px solid #FFD54F;border-radius:12px;padding:16px;'>" +
-    "<div style='color:#FFD54F;font-weight:700;font-size:1.1rem;margin-bottom:8px;'>Creatura</div>";
-  if (unit) {
-    const owner = g.getEntityById(unit.ownerId);
-    const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
-    const hp = unit.currentHp !== undefined ? unit.currentHp : unit.hp;
-    right += "<div style='font-size:1.1rem;font-weight:700;'>" + unit.name + "</div>" +
-      "<div style='margin:8px 0;'>⚔ " + atk + " / ❤ " + hp + (unit.shields ? " · scudi " + unit.shields : "") + "</div>" +
-      "<div style='opacity:0.8;'>Proprietario: " + (owner ? owner.name : "?") + (owner && owner.isFallen ? " [CADUTO]" : "") + "</div>" +
-      (unit.isWithered ? "<div style='color:#FF8A65;margin-top:6px;'>AVVIZZITA</div>" : "") +
-      "<div id='hex-inspect-actions' style='display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;'></div>";
-  } else {
-    right += "<div style='opacity:0.7;'>Nessuna creatura su questa cella.</div>";
-  }
-  right += "</div>";
-
-  panel.innerHTML = "<div style='display:flex;gap:16px;flex-wrap:wrap;max-width:820px;width:100%;'>" + left + right +
-    "<div style='width:100%;text-align:center;margin-top:8px;'><button class='btn' id='hex-inspect-close'>Chiudi</button></div></div>";
-  panel.style.display = "flex";
-  panel.classList.remove("hidden");
-  document.getElementById("hex-inspect-close").onclick = function() {
-    panel.style.display = "none";
-  };
-
-  const actions = document.getElementById("hex-inspect-actions");
-  if (actions && unit && g.currentEntity && g.currentEntity.isHuman && unit.ownerId === g.currentEntity.id && g.phase === "playing") {
-    const btnM = document.createElement("button");
-    btnM.className = "btn btn-primary";
-    btnM.textContent = "Muovi";
-    btnM.onclick = function() {
-      panel.style.display = "none";
-      if (unit && unit.instanceId) {
-        g.selectUnit(unit.instanceId);
+  try {
+    const g = window.game;
+    if (!g) { console.warn("onHexInspect: no game"); return; }
+    const key = q + "," + r;
+    const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
+    const human = g.entities.find(e => e.isHuman);
+    const discovered = typeof g.isCellDiscovered === "function" ? g.isCellDiscovered(q, r, human) : true;
+    let placeName = type;
+    let placeDesc = "";
+    if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0") {
+      placeName = "? Terreno inesplorato";
+      placeDesc = "Non ancora scoperto. Il tipo si rivela a fine turno se una creatura termina qui.";
+    } else if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
+      const def = TILE_TYPE_DEFS[type];
+      placeName = (def.icon ? def.icon + " " : "") + (def.name || type);
+      placeDesc = def.desc || "";
+      if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
+        placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
       }
-      if (typeof renderGameState === "function") renderGameState();
-      if (typeof MapRenderer !== "undefined") MapRenderer.render();
-    };
-    if (unit.isWithered) {
-      btnM.disabled = true;
-      btnM.style.opacity = "0.5";
-      btnM.title = "Avvizzita";
+    } else if (type === "city" || key === "0,0") {
+      placeName = "★ Altare";
+      placeDesc = "Casella centrale. Qui si possono evocare i Mostrissimi (con Circoli rituali).";
     }
-    actions.appendChild(btnM);
+
+    let panel = document.getElementById("hex-inspect-panel");
+    if (!panel) {
+      panel = document.createElement("div");
+      panel.id = "hex-inspect-panel";
+      document.body.appendChild(panel);
+    }
+    panel.style.cssText = "position:fixed;inset:0;z-index:5000;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;padding:20px;";
+    panel.className = "";
+
+    const left = "<div style='flex:1;min-width:220px;max-width:420px;background:#1B2838;border:1px solid #64FFDA;border-radius:12px;padding:18px;'>" +
+      "<div style='color:#64FFDA;font-weight:700;font-size:1.15rem;margin-bottom:10px;'>Luogo</div>" +
+      "<div style='font-size:1.1rem;margin-bottom:8px;'>" + placeName + "</div>" +
+      "<div style='opacity:0.75;font-size:0.85rem;margin-bottom:10px;'>(" + q + "," + r + ")</div>" +
+      "<div style='line-height:1.55;color:#E0D6C8;'>" + (placeDesc || "Nessuna descrizione.") + "</div></div>";
+
+    let right = "<div style='flex:1;min-width:220px;max-width:420px;background:#1B2838;border:1px solid #FFD54F;border-radius:12px;padding:18px;'>" +
+      "<div style='color:#FFD54F;font-weight:700;font-size:1.15rem;margin-bottom:10px;'>Creatura</div>";
+    if (unit) {
+      const owner = g.getEntityById(unit.ownerId);
+      const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
+      const hp = unit.currentHp !== undefined ? unit.currentHp : unit.hp;
+      right += "<div style='font-size:1.15rem;font-weight:700;'>" + (unit.name || "?") + "</div>" +
+        "<div style='margin:10px 0;'>⚔ " + atk + " / ❤ " + hp + (unit.shields ? " · scudi " + unit.shields : "") + "</div>" +
+        "<div style='opacity:0.85;'>Proprietario: " + (owner ? owner.name : "?") + (owner && owner.isFallen ? " [CADUTO]" : "") + "</div>" +
+        (unit.isWithered ? "<div style='color:#FF8A65;margin-top:8px;'>AVVIZZITA</div>" : "") +
+        "<div id='hex-inspect-actions' style='display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;'></div>";
+    } else {
+      right += "<div style='opacity:0.7;'>Nessuna creatura su questa cella.</div>";
+    }
+    right += "</div>";
+
+    panel.innerHTML = "<div style='display:flex;gap:18px;flex-wrap:wrap;max-width:900px;width:100%;justify-content:center;'>" + left + right +
+      "<div style='width:100%;text-align:center;margin-top:10px;'><button class='btn btn-primary' id='hex-inspect-close' style='padding:10px 28px;'>Chiudi</button></div></div>";
+
+    document.getElementById("hex-inspect-close").onclick = function() {
+      panel.style.display = "none";
+    };
+
+    const actions = document.getElementById("hex-inspect-actions");
+    if (actions && unit && g.currentEntity && g.currentEntity.isHuman && unit.ownerId === g.currentEntity.id && g.phase === "playing") {
+      const btnM = document.createElement("button");
+      btnM.className = "btn btn-primary";
+      btnM.textContent = "Muovi";
+      btnM.onclick = function() {
+        panel.style.display = "none";
+        if (unit.instanceId) g.selectUnit(unit.instanceId);
+        if (typeof renderGameState === "function") renderGameState();
+        if (typeof MapRenderer !== "undefined") MapRenderer.render();
+      };
+      if (unit.isWithered) {
+        btnM.disabled = true;
+        btnM.style.opacity = "0.5";
+      }
+      actions.appendChild(btnM);
+    }
+  } catch (err) {
+    console.error("onHexInspect failed", err);
+    alert("Errore ispezione esagono: " + err.message);
   }
 };
-

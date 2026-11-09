@@ -20,9 +20,11 @@ var MapRenderer = {
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext("2d");
     this.game = gameState;
-    // Rebind sempre: evita listener morti / canvas vecchio
-    this._bindEvents();
-    this._eventsBound = true;
+    // Bind eventi una sola volta (evita listener multipli tra una partita e l'altra)
+    if (!this._eventsBound) {
+      this._bindEvents();
+      this._eventsBound = true;
+    }
     this.center();
     this.render();
   },
@@ -690,160 +692,165 @@ var MapRenderer = {
   _bindEvents() {
     const c = this.canvas;
     if (!c) return;
-    // Rimuovi listener precedenti
-    if (this._onClick) {
-      c.removeEventListener("click", this._onClick);
-      c.removeEventListener("contextmenu", this._onContext);
-      c.removeEventListener("mousedown", this._onDown);
-      c.removeEventListener("mousemove", this._onMove);
-      c.removeEventListener("wheel", this._onWheel);
-      window.removeEventListener("mouseup", this._onUp);
+
+    if (this._boundHandlers) {
+      const h = this._boundHandlers;
+      c.removeEventListener("mousedown", h.down);
+      window.removeEventListener("mouseup", h.up);
+      c.removeEventListener("mousemove", h.move);
+      c.removeEventListener("click", h.click);
+      c.removeEventListener("contextmenu", h.ctx);
+      c.removeEventListener("wheel", h.wheel);
     }
 
-    this._onDown = (e) => {
+    const self = this;
+    const handlers = {};
+    handlers.down = (e) => {
       if (e.button !== 0) return;
-      this.isDragging = true;
-      this._dragMoved = false;
-      this.lastX = e.clientX;
-      this.lastY = e.clientY;
+      self.isDragging = true;
+      self._dragMoved = false;
+      self.lastX = e.clientX;
+      self.lastY = e.clientY;
     };
-    this._onUp = () => { this.isDragging = false; };
-    this._onMove = (e) => {
-      if (this.isDragging) {
-        const dx = e.clientX - this.lastX;
-        const dy = e.clientY - this.lastY;
-        if (Math.abs(dx) + Math.abs(dy) > 3) this._dragMoved = true;
-        this.offsetX += dx;
-        this.offsetY += dy;
-        this.lastX = e.clientX;
-        this.lastY = e.clientY;
-        this.render();
+    handlers.up = () => { self.isDragging = false; };
+    handlers.move = (e) => {
+      if (self.isDragging) {
+        const dx = e.clientX - self.lastX;
+        const dy = e.clientY - self.lastY;
+        if (Math.abs(dx) + Math.abs(dy) > 4) self._dragMoved = true;
+        self.offsetX += dx;
+        self.offsetY += dy;
+        self.lastX = e.clientX;
+        self.lastY = e.clientY;
+        self.render();
         return;
       }
-      const { x, y } = this._eventToCanvasXY(e);
-      this.hoverHex = this.pixelToAxial(x, y);
-      this.render();
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      self.hoverHex = self.pixelToAxial(mx, my);
+      self.render();
     };
-    this._onContext = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-    this._onWheel = (e) => {
+    handlers.ctx = (e) => { e.preventDefault(); e.stopPropagation(); };
+    handlers.wheel = (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      this.scale = Math.min(Math.max(this.scale * delta, 0.78), 2.8);
-      this.render();
+      self.scale = Math.min(Math.max(self.scale * delta, 0.78), 2.8);
+      self.render();
     };
-    this._onClick = (e) => {
+    handlers.click = (e) => {
       if (e.button !== 0) return;
-      if (this._dragMoved) return; // era un drag, non un click
-      const g = this.game || window.game;
+      if (self._dragMoved) return;
+      const g = self.game || (typeof window !== "undefined" ? window.game : null);
       if (!g) return;
       if (g.phase !== "playing" && g.phase !== "ended") return;
 
-      const { x: mx, y: my } = this._eventToCanvasXY(e);
-      const { q, r } = this.pixelToAxial(mx, my);
+      const rect = c.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const { q, r } = self.pixelToAxial(mx, my);
       if (!CELL_TYPE.has(q + "," + r)) return;
 
-      // Azioni di gioco solo in playing
-      if (g.phase === "playing") {
-        if (g.pendingTeleportStep) {
-          g.completeTeleportStep(q, r);
-          if (window.onGameUpdate) window.onGameUpdate();
-          this.render();
-          return;
-        }
-        if (g.sacrificeMode) {
-          const human = g.entities.find(en => en.isHuman);
-          if (human && g.currentEntity && g.currentEntity.isHuman) {
-            const unit = human.field.find(u => u.q === q && u.r === r);
-            if (unit) {
-              g.sacrificeUnitForMostrissimo(unit);
-              if (window.onGameUpdate) window.onGameUpdate();
-              this.render();
-              return;
-            }
-          }
-        }
-        if (g.playMode && g.selectedCard) {
-          g.playCardOnHex(q, r);
-          if (typeof closeCardDetail === "function") closeCardDetail();
-          if (window.onGameUpdate) window.onGameUpdate();
-          this.render();
-          return;
-        }
-        if (g.moveMode && g.selectedUnit) {
-          const ok = g.tryMoveOrAttack(q, r);
-          if (typeof closeCardDetail === "function") closeCardDetail();
-          if (ok && !g.pendingMovePath) {
-            g.selectedUnit = null;
-            g.moveMode = false;
-          }
-          if (window.onGameUpdate) window.onGameUpdate();
-          this.render();
-          return;
-        }
-        if (g.targetMode) {
-          const anyUnit = g.getUnitAt(q, r);
-          if (anyUnit) {
-            g.selectTargetUnit(anyUnit);
-            if (typeof closeCardDetail === "function") closeCardDetail();
+      if (g.phase !== "playing") return;
+
+      if (g.pendingTeleportStep) {
+        g.completeTeleportStep(q, r);
+        if (window.onGameUpdate) window.onGameUpdate();
+        self.render();
+        return;
+      }
+      if (g.sacrificeMode) {
+        const human = g.entities.find(en => en.isHuman);
+        if (human && g.currentEntity && g.currentEntity.isHuman) {
+          const unit = human.field.find(u => u.q === q && u.r === r);
+          if (unit) {
+            g.sacrificeUnitForMostrissimo(unit);
             if (window.onGameUpdate) window.onGameUpdate();
-            this.render();
+            self.render();
             return;
           }
         }
-        if (g.attachMode && g.selectedCard && g.selectedCard.type === "artefatto") {
-          const human = g.entities.find(en => en.isHuman);
-          if (human) {
-            const unit = human.field.find(u => u.q === q && u.r === r);
-            if (unit) {
-              g.attachArtifactToUnit(unit.instanceId);
-              g.selectedUnit = null;
-              g.moveMode = false;
-              g.attachMode = false;
-              g.selectedCard = null;
-              if (typeof closeCardDetail === "function") closeCardDetail();
-              if (window.onGameUpdate) window.onGameUpdate();
-              this.render();
-              return;
-            }
-          }
+      }
+      if (g.playMode && g.selectedCard) {
+        g.playCardOnHex(q, r);
+        if (typeof closeCardDetail === "function") closeCardDetail();
+        if (window.onGameUpdate) window.onGameUpdate();
+        self.render();
+        return;
+      }
+      if (g.moveMode && g.selectedUnit) {
+        const ok = g.tryMoveOrAttack(q, r);
+        if (typeof closeCardDetail === "function") closeCardDetail();
+        if (ok && !g.pendingMovePath) {
+          g.selectedUnit = null;
+          g.moveMode = false;
         }
-
-        // Ispezione esagono (fog = nulla, eccezione Altare)
-        if (!g.moveMode && !g.playMode && !g.attachMode && !g.targetMode && !g.sacrificeMode && !g.pendingTeleportStep) {
-          const human = g.entities.find(en => en.isHuman);
-          if (human) {
-            const anyUnit = g.getUnitAt(q, r);
-            const cellType = CELL_TYPE.get(q + "," + r);
-            const isAltar = cellType === "city" || (q === 0 && r === 0);
-            const onOwnUnit = anyUnit && anyUnit.ownerId === human.id;
-            const visible = g.isVisibleTo(human, q, r);
-            if (!visible && !isAltar && !onOwnUnit) return;
-            if (typeof window.onHexInspect === "function") {
-              const showUnit = anyUnit && (onOwnUnit || visible);
-              // Altare in fog: niente creature
-              if (isAltar && !visible && !onOwnUnit) {
-                window.onHexInspect(q, r, null);
-              } else {
-                window.onHexInspect(q, r, showUnit ? anyUnit : null);
-              }
-            }
-            this.render();
+        if (window.onGameUpdate) window.onGameUpdate();
+        self.render();
+        return;
+      }
+      if (g.targetMode) {
+        const anyUnit = g.getUnitAt(q, r);
+        if (anyUnit) {
+          g.selectTargetUnit(anyUnit);
+          if (typeof closeCardDetail === "function") closeCardDetail();
+          if (window.onGameUpdate) window.onGameUpdate();
+          self.render();
+          return;
+        }
+      }
+      if (g.attachMode && g.selectedCard && g.selectedCard.type === "artefatto") {
+        const human = g.entities.find(en => en.isHuman);
+        if (human) {
+          const unit = human.field.find(u => u.q === q && u.r === r);
+          if (unit) {
+            g.attachArtifactToUnit(unit.instanceId);
+            g.selectedUnit = null;
+            g.moveMode = false;
+            g.attachMode = false;
+            g.selectedCard = null;
+            if (typeof closeCardDetail === "function") closeCardDetail();
+            if (window.onGameUpdate) window.onGameUpdate();
+            self.render();
+            return;
           }
         }
       }
+
+      // Ispezione: fog = nulla (eccezione Altare)
+      if (g.moveMode || g.playMode || g.attachMode || g.targetMode || g.sacrificeMode || g.pendingTeleportStep) return;
+      const human = g.entities.find(en => en.isHuman);
+      if (!human) return;
+      const anyUnit = g.getUnitAt(q, r);
+      const cellType = CELL_TYPE.get(q + "," + r);
+      const isAltar = cellType === "city" || (q === 0 && r === 0);
+      const onOwnUnit = !!(anyUnit && anyUnit.ownerId === human.id);
+      const visible = !!g.isVisibleTo(human, q, r);
+      if (!visible && !isAltar && !onOwnUnit) return;
+      if (typeof window.onHexInspect === "function") {
+        try {
+          if (isAltar && !visible && !onOwnUnit) {
+            window.onHexInspect(q, r, null);
+          } else {
+            const showUnit = anyUnit && (onOwnUnit || visible) ? anyUnit : null;
+            window.onHexInspect(q, r, showUnit);
+          }
+        } catch (err) {
+          console.error("onHexInspect error", err);
+        }
+      }
+      self.render();
     };
 
-    c.addEventListener("mousedown", this._onDown);
-    window.addEventListener("mouseup", this._onUp);
-    c.addEventListener("mousemove", this._onMove);
-    c.addEventListener("contextmenu", this._onContext);
-    c.addEventListener("click", this._onClick);
-    c.addEventListener("wheel", this._onWheel, { passive: false });
+    this._boundHandlers = handlers;
+    c.addEventListener("mousedown", handlers.down);
+    window.addEventListener("mouseup", handlers.up);
+    c.addEventListener("mousemove", handlers.move);
+    c.addEventListener("click", handlers.click);
+    c.addEventListener("contextmenu", handlers.ctx);
+    c.addEventListener("wheel", handlers.wheel, { passive: false });
   }
+}
 
-};
 
 window.MapRenderer = MapRenderer;

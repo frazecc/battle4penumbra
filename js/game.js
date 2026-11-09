@@ -1096,9 +1096,22 @@ class GameState {
   getEntityById(id) { return this.entities.find(e => e.id === id); }
 
   _resolveCombat(attacker, defender, originQ, originR) {
+    const ctx = { attacker, defender, originQ, originR };
+    // Fase 1: trappole on_attack (pausa se serve)
+    if (this._checkTraps("on_attack", ctx, () => this._combatDealDamage(attacker, defender, originQ, originR))) {
+      return; // in attesa decisione trappola
+    }
+    this._combatDealDamage(attacker, defender, originQ, originR);
+  }
+
+  _combatDealDamage(attacker, defender, originQ, originR) {
+    // Creatura già rimossa?
     const atkEnt = this.getEntityById(attacker.ownerId);
     const defEnt = this.getEntityById(defender.ownerId);
-    this._checkTraps(defEnt, "on_attack", { attacker, defender });
+    if (!atkEnt || !defEnt) return;
+    if (!atkEnt.field.some(u => u.instanceId === attacker.instanceId)) return;
+    if (!defEnt.field.some(u => u.instanceId === defender.instanceId)) return;
+
     const atkPower = (attacker.atk || 0) + (attacker.permanentAtkBonus || 0);
     this.addLog("⚔️ " + attacker.name + " (" + atkPower + ") attacca " + defender.name + " (" + defender.currentHp + " PV)", true);
     let dmg = atkPower;
@@ -1110,60 +1123,168 @@ class GameState {
     if (dmg >= defender.currentHp) {
       const defQ = defender.q, defR = defender.r;
       this._destroyUnit(defender, { attacker, defender });
-      this._checkTraps(defEnt, "on_death", { attacker, defender });
-      // L'attaccante occupa la cella del difensore solo se è ancora vivo
-      if (atkEnt.field.some(u => u.instanceId === attacker.instanceId)) {
-        attacker.q = defQ; attacker.r = defR;
-        this._revealAround(atkEnt, attacker.q, attacker.r, 2);
-      }
+      const cont = () => {
+        if (atkEnt.field.some(u => u.instanceId === attacker.instanceId)) {
+          attacker.q = defQ; attacker.r = defR;
+          this._revealAround(atkEnt, attacker.q, attacker.r, 2);
+        }
+      };
+      if (this._checkTraps("on_death", { attacker, defender }, cont)) return;
+      cont();
     } else {
       defender.currentHp -= dmg;
       this.addLog(defender.name + " subisce " + dmg + " → " + defender.currentHp + " PV");
-      this._checkTraps(defEnt, "after_damage", { attacker, defender, damage: dmg });
-      let counter = (defender.atk || 0) + (defender.permanentAtkBonus || 0);
-      if (attacker.shields > 0) {
-        const absorbed = Math.min(attacker.shields, counter);
-        attacker.shields -= absorbed; counter -= absorbed;
-      }
-      if (counter >= (attacker.currentHp || 1)) {
-        this.addLog(attacker.name + " muore dal contrattacco!");
-        this._destroyUnit(attacker, { attacker: defender, defender: attacker });
-      } else if (counter > 0) {
-        attacker.currentHp -= counter;
-        this.addLog("Contrattacco: " + attacker.name + " ha " + attacker.currentHp + " PV");
-      }
-      if (atkEnt.field.some(u => u.instanceId === attacker.instanceId)) {
-        attacker.q = originQ; attacker.r = originR;
-        this.addLog(attacker.name + " rimbalza alla cella di partenza.");
-      }
+      const afterDmg = () => this._combatCounter(attacker, defender);
+      if (this._checkTraps("after_damage", { attacker, defender, damage: dmg }, afterDmg)) return;
+      afterDmg();
     }
   }
 
-  _checkTraps(owner, trigger, ctx) {
-    if (!owner || owner.isFallen) return;
-    const available = owner.hand.filter(c => c.type === "trappola" && c.trigger === trigger);
-    if (!available.length) return;
-    if (owner.isHuman) {
-      this.pendingTrap = { owner, trigger, ctx, options: available };
+  _combatCounter(attacker, defender) {
+    const atkEnt = this.getEntityById(attacker.ownerId);
+    const defEnt = this.getEntityById(defender.ownerId);
+    if (!atkEnt || !defEnt) return;
+    if (!defEnt.field.some(u => u.instanceId === defender.instanceId)) return;
+    if (!atkEnt.field.some(u => u.instanceId === attacker.instanceId)) return;
+    let counter = (defender.atk || 0) + (defender.permanentAtkBonus || 0);
+    if (attacker.shields > 0) {
+      const absorbed = Math.min(attacker.shields, counter);
+      attacker.shields -= absorbed; counter -= absorbed;
+    }
+    if (counter >= (attacker.currentHp || 1)) {
+      this.addLog(attacker.name + " muore dal contrattacco!");
+      this._destroyUnit(attacker, { attacker: defender, defender: attacker });
+    } else if (counter > 0) {
+      attacker.currentHp -= counter;
+      this.addLog("Contrattacco: " + attacker.name + " ha " + attacker.currentHp + " PV");
+    }
+  }
+
+
+
+  _resumeAfterTrapPause() {
+    if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
+    const cur = this.currentEntity;
+    if (cur && !cur.isHuman && this.phase === "playing" && !this.pendingTrapWindow) {
+      if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
+      this._aiEndTurnTimeout = setTimeout(() => {
+        this._aiEndTurnTimeout = null;
+        this._aiTurnLock = false;
+        if (this.currentEntity && !this.currentEntity.isHuman && this.phase === "playing") {
+          this.endTurn();
+          if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
+          if (this.currentEntity && !this.currentEntity.isHuman && this.phase === "playing") {
+            setTimeout(() => this.runAITurn(), 400);
+          }
+        }
+      }, 500);
+    }
+  }
+
+  /**
+   * Trappole v037: mai nel proprio turno; coda dal giocatore successivo;
+   * una sola attivazione; niente risposta a trappola.
+   * @returns {boolean} true se in pausa
+   */
+  _checkTraps(trigger, ctx, onComplete) {
+    if (this.pendingTrapWindow) return true;
+    const current = this.currentEntity;
+    if (!current) {
+      if (onComplete) onComplete();
+      return false;
+    }
+    const n = this.entities.length;
+    const startIdx = this.entities.findIndex(e => e.id === current.id);
+    const queue = [];
+    for (let i = 1; i < n; i++) {
+      const ent = this.entities[(startIdx + i) % n];
+      if (!ent || ent.isFallen) continue;
+      const traps = ent.hand.filter(c => c.type === "trappola" && c.trigger === trigger);
+      if (traps.length) queue.push({ entityId: ent.id, traps: traps.map(t => t.instanceId) });
+    }
+    if (!queue.length) {
+      if (onComplete) onComplete();
+      return false;
+    }
+    this.pendingTrapWindow = { trigger, ctx: ctx || {}, queue, onComplete: onComplete || null };
+    this._promptNextTrapDecider();
+    return true;
+  }
+
+  _promptNextTrapDecider() {
+    const w = this.pendingTrapWindow;
+    if (!w || !w.queue.length) {
+      const cb = w && w.onComplete;
+      this.pendingTrapWindow = null;
+      this.pendingTrap = null;
+      if (cb) cb();
+      this._resumeAfterTrapPause();
+      return;
+    }
+    const next = w.queue[0];
+    const ent = this.getEntityById(next.entityId);
+    if (!ent) {
+      w.queue.shift();
+      this._promptNextTrapDecider();
+      return;
+    }
+    const options = ent.hand.filter(c => next.traps.includes(c.instanceId) && c.type === "trappola");
+    if (!options.length) {
+      w.queue.shift();
+      this._promptNextTrapDecider();
+      return;
+    }
+    this.pendingTrap = { owner: ent, trigger: w.trigger, ctx: w.ctx, options };
+    if (ent.isHuman) {
+      this.addLog("In attesa di trappola da " + ent.name + "…", true);
+      if (this._aiEndTurnTimeout) {
+        clearTimeout(this._aiEndTurnTimeout);
+        this._aiEndTurnTimeout = null;
+      }
+      this._aiTurnLock = false;
       if (typeof window !== "undefined" && window.onTrapPrompt) window.onTrapPrompt(this.pendingTrap);
+      if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
     } else {
-      const trap = available[0];
-      if (owner.canPay(trap.cost || 0)) this._activateTrap(owner, trap, ctx);
+      const trap = options.find(t => ent.canPay(t.cost || 0));
+      if (trap && Math.random() < 0.55) {
+        this._activateTrap(ent, trap, w.ctx);
+        const cb = w.onComplete;
+        this.pendingTrapWindow = null;
+        this.pendingTrap = null;
+        if (cb) cb();
+        this._resumeAfterTrapPause();
+      } else {
+        w.queue.shift();
+        this.pendingTrap = null;
+        this._promptNextTrapDecider();
+      }
     }
   }
 
   activatePendingTrap(trapInstanceId) {
-    if (!this.pendingTrap) return false;
+    if (!this.pendingTrap || !this.pendingTrapWindow) return false;
     const { owner, ctx } = this.pendingTrap;
     const trap = owner.hand.find(c => c.instanceId === trapInstanceId);
     if (!trap) return false;
     if (!owner.canPay(trap.cost || 0)) { this.addLog("Mana insufficiente per la trappola!"); return false; }
     this._activateTrap(owner, trap, ctx);
+    const cb = this.pendingTrapWindow.onComplete;
+    this.pendingTrapWindow = null;
     this.pendingTrap = null;
+    if (cb) cb();
+    this._resumeAfterTrapPause();
     return true;
   }
 
-  declinePendingTrap() { this.pendingTrap = null; }
+  declinePendingTrap() {
+    if (!this.pendingTrapWindow) {
+      this.pendingTrap = null;
+      return;
+    }
+    this.pendingTrapWindow.queue.shift();
+    this.pendingTrap = null;
+    this._promptNextTrapDecider();
+  }
 
   _activateTrap(owner, trap, ctx) {
     owner.pay(trap.cost || 0);
@@ -1173,231 +1294,6 @@ class GameState {
     this._resolveEffect(trap.effectId, owner, ctx && ctx.defender ? ctx.defender : (ctx && ctx.attacker ? ctx.attacker : null), ctx);
   }
 
-  _resolveETB(unit, owner) {
-    if (!unit.effectId) return;
-    this._resolveEffect(unit.effectId, owner, unit);
-  }
-
-  _resolveEffect(effectId, sourceEntity, targetUnit, ctx) {
-    if (!effectId) return;
-    ctx = ctx || {};
-    const self = targetUnit;
-    switch (effectId) {
-      case "etb_heal_self_1":
-        if (self) { self.currentHp = (self.currentHp || 0) + 1; this.addLog(self.name + " cura +1 PV"); }
-        break;
-      case "etb_heal_self_2":
-        if (self) { self.currentHp = (self.currentHp || 0) + 2; this.addLog(self.name + " cura +2 PV"); }
-        break;
-      case "etb_shield_self_1":
-        if (self) { self.shields = (self.shields || 0) + 1; this.addLog(self.name + " ottiene 1 scudo"); }
-        break;
-      case "etb_damage_1":
-        this._damageVisibleTarget(sourceEntity, 1);
-        break;
-      case "etb_plain_atk_1":
-        if (self && CELL_TYPE.get(self.q + "," + self.r) === "plain") {
-          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1;
-          this.addLog(self.name + " ottiene +1 ATK (Pianura)");
-        }
-        break;
-      case "etb_heal_allies_4":
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 4; });
-        this.addLog("Tutti gli alleati +4 PV");
-        break;
-      case "etb_damage_3_aoe1":
-        this._damageVisibleTarget(sourceEntity, 3, true);
-        break;
-      case "etb_shield_adj_1":
-        if (self) {
-          sourceEntity.field.forEach(u => {
-            if (hexDistance(u.q, u.r, self.q, self.r) === 1) u.shields = (u.shields || 0) + 1;
-          });
-          this.addLog("Scudo +1 agli adiacenti");
-        }
-        break;
-      case "etb_atk_per_ally_2":
-        if (self) {
-          const allies = sourceEntity.field.length - 1;
-          self.permanentAtkBonus = (self.permanentAtkBonus || 0) + allies * 2;
-          this.addLog(self.name + " ottiene +" + (allies * 2) + " ATK");
-        }
-        break;
-      case "etb_sacrifice_discard":
-        if (self) {
-          sourceEntity.field = sourceEntity.field.filter(u => u.instanceId !== self.instanceId);
-          sourceEntity.graveyard.push(self);
-          this.addLog(self.name + " si sacrifica");
-          const foes = this.activePlayers.filter(e => e.id !== sourceEntity.id);
-          if (foes.length) {
-            const foe = foes[Math.floor(Math.random() * foes.length)];
-            if (foe.hand.length) {
-              const idx = Math.floor(Math.random() * foe.hand.length);
-              const discarded = foe.hand.splice(idx, 1)[0];
-              foe.graveyard.push(discarded);
-              this.addLog(foe.name + " scarta " + discarded.name);
-            }
-          }
-        }
-        break;
-      case "etb_sac_destroy":
-      case "etb_sac_up_to_2":
-        this._destroyVisibleEnemy(sourceEntity);
-        break;
-      case "curse_heal_3":
-        if (targetUnit) { targetUnit.currentHp = (targetUnit.currentHp || 0) + 3; this.addLog(targetUnit.name + " +3 PV"); }
-        break;
-      case "curse_heal_6":
-        if (targetUnit) { targetUnit.currentHp = (targetUnit.currentHp || 0) + 6; this.addLog(targetUnit.name + " +6 PV"); }
-        break;
-      case "curse_damage_3":
-        if (targetUnit) this._applyDamage(targetUnit, 3);
-        break;
-      case "curse_damage_6":
-        if (targetUnit) this._applyDamage(targetUnit, 6);
-        break;
-      case "curse_destroy":
-      case "curse_destroy_2":
-        if (targetUnit) this._destroyUnit(targetUnit);
-        break;
-      case "curse_shield_1":
-        if (targetUnit) { targetUnit.shields = (targetUnit.shields || 0) + 1; this.addLog(targetUnit.name + " ottiene 1 scudo"); }
-        break;
-      case "curse_shield_2":
-        if (targetUnit) { targetUnit.shields = (targetUnit.shields || 0) + 2; this.addLog(targetUnit.name + " ottiene 2 scudi"); }
-        break;
-      case "curse_atk_3":
-        if (targetUnit) { targetUnit.permanentAtkBonus = (targetUnit.permanentAtkBonus || 0) + 3; this.addLog(targetUnit.name + " +3 ATK"); }
-        break;
-      case "curse_atk_6":
-        if (targetUnit) { targetUnit.permanentAtkBonus = (targetUnit.permanentAtkBonus || 0) + 6; this.addLog(targetUnit.name + " +6 ATK"); }
-        break;
-      case "trap_heal_after_damage":
-        if (ctx.defender && ctx.damage) {
-          ctx.defender.currentHp = (ctx.defender.currentHp || 0) + ctx.damage;
-          this.addLog(ctx.defender.name + " viene curato di " + ctx.damage);
-        }
-        break;
-      case "trap_retaliate_1":
-        if (ctx.attacker) this._applyDamage(ctx.attacker, 1);
-        break;
-      case "trap_retaliate_3":
-        if (ctx.attacker) this._applyDamage(ctx.attacker, 3);
-        break;
-      case "trap_revenge_kill":
-        if (ctx.attacker) this._destroyUnit(ctx.attacker);
-        break;
-      case "trap_bounce":
-        if (ctx.attacker) this._returnToHand(ctx.attacker);
-        if (ctx.defender) this._returnToHand(ctx.defender);
-        break;
-      case "trap_pre_atk_1":
-        if (ctx.defender) { ctx.defender.permanentAtkBonus = (ctx.defender.permanentAtkBonus || 0) + 1; this.addLog(ctx.defender.name + " +1 ATK preventivo"); }
-        break;
-      case "trap_pre_atk_3":
-        if (ctx.defender) { ctx.defender.permanentAtkBonus = (ctx.defender.permanentAtkBonus || 0) + 3; this.addLog(ctx.defender.name + " +3 ATK preventivo"); }
-        break;
-      case "trap_shield_2":
-        if (ctx.defender) { ctx.defender.shields = (ctx.defender.shields || 0) + 2; this.addLog(ctx.defender.name + " ottiene 2 scudi"); }
-        break;
-      case "trap_reflect":
-        if (ctx.attacker && ctx.defender) {
-          const dmg = (ctx.attacker.atk || 0) + (ctx.attacker.permanentAtkBonus || 0);
-          this._applyDamage(ctx.attacker, dmg);
-          this.addLog("Danno riflesso!");
-        }
-        break;
-      case "trap_death_aoe":
-        if (ctx.attacker) {
-          this._destroyUnit(ctx.attacker);
-          const adj = this._hexesInRange(ctx.attacker.q, ctx.attacker.r, 1);
-          for (const [aq, ar] of adj) {
-            const u = this.getUnitAt(aq, ar);
-            if (u && u.ownerId !== sourceEntity.id) { this._destroyUnit(u); break; }
-          }
-        }
-        break;
-      case "ms_heal_allies_2":
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 2; });
-        break;
-      case "ms_heal_allies_4":
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 4; });
-        break;
-      case "ms_damage_2": this._damageVisibleTarget(sourceEntity, 2); break;
-      case "ms_damage_4": this._damageVisibleTarget(sourceEntity, 4); break;
-      case "ms_destroy_low":
-      case "ms_destroy": this._destroyVisibleEnemy(sourceEntity); break;
-      case "ms_shield_self_adj":
-        if (self) {
-          self.shields = (self.shields || 0) + 1;
-          sourceEntity.field.forEach(u => {
-            if (hexDistance(u.q, u.r, self.q, self.r) === 1) u.shields = (u.shields || 0) + 1;
-          });
-        }
-        break;
-      case "ms_shield_self_2":
-        if (self) self.shields = (self.shields || 0) + 2;
-        break;
-      case "ms_atk_self_1":
-        if (self) self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 1;
-        break;
-      case "ms_atk_self_2":
-        if (self) self.permanentAtkBonus = (self.permanentAtkBonus || 0) + 2;
-        break;
-      case "ms_clear_fog_all":
-        this.globalClearFogUntil = this.turnNumber + 1;
-        this.addLog("🌫️ Nebbia di Guerra rimossa per TUTTI fino al prossimo turno!", true);
-        break;
-      case "ms_clear_fog_self_destroy":
-        sourceEntity.clearFogUntil = this.turnNumber + 1;
-        this._destroyVisibleEnemy(sourceEntity);
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 2; });
-        break;
-      case "ms_purge":
-        this._destroyVisibleEnemy(sourceEntity);
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) + 3; });
-        break;
-      case "ms_eternal_eye":
-        sourceEntity.clearFogUntil = 9999;
-        sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) * 2; });
-        this.addLog("👁️ Occhio Eterno: nebbia rimossa + PV raddoppiati!", true);
-        break;
-      case "ms_apocalypse":
-        if (self) {
-          const adj = this._hexesInRange(self.q, self.r, 1);
-          adj.forEach(([aq, ar]) => {
-            const u = this.getUnitAt(aq, ar);
-            if (u && u.ownerId !== sourceEntity.id) this._destroyUnit(u);
-          });
-          sourceEntity.field.forEach(u => { u.currentHp = (u.currentHp || 0) * 2; });
-        }
-        break;
-      case "ms_random":
-        if (self) { self.currentHp = (self.currentHp || 0) + 1; self.shields = (self.shields || 0) + 1; }
-        break;
-      default:
-        this.addLog("(effetto " + effectId + " non ancora mappato)");
-    }
-  }
-
-  _applyDamage(unit, amount) {
-    if (!unit) return;
-    let dmg = amount;
-    if (unit.shields > 0) {
-      const abs = Math.min(unit.shields, dmg);
-      unit.shields -= abs; dmg -= abs;
-    }
-    if (dmg <= 0) return;
-    unit.currentHp = (unit.currentHp || 1) - dmg;
-    this.addLog(unit.name + " subisce " + dmg + " danni → " + unit.currentHp + " PV");
-    if (unit.currentHp <= 0) this._destroyUnit(unit);
-  }
-
-  /**
-   * Distrugge un'unità e risolve gli effetti di Uscita.
-   * @param {object} unit
-   * @param {object} [ctx]  contesto opzionale (es. { attacker } in combattimento)
-   */
   _destroyUnit(unit, ctx) {
     if (!unit) return;
     const ent = this.getEntityById(unit.ownerId);
@@ -1531,6 +1427,10 @@ class GameState {
   }
 
   endTurn() {
+    if (this.pendingTrapWindow || this.pendingTrap) {
+      this.addLog("Risolvi prima la trappola in sospeso.");
+      return;
+    }
     const current = this.currentEntity;
     this.addLog(current.name + " termina il turno.");
     current.field.forEach(u => {
@@ -2287,6 +2187,7 @@ class GameState {
 
   runAITurn() {
     if (this._aiTurnLock) return;
+    if (this.pendingTrapWindow || this.pendingTrap) return;
     const ai = this.currentEntity;
     if (!ai || ai.isHuman || this.phase !== "playing") return;
     this._aiTurnLock = true;
@@ -2646,7 +2547,8 @@ class GameState {
   toSaveData() {
     const setToArr = (s) => (s && typeof s[Symbol.iterator] === "function") ? [...s] : [];
     return {
-      version: (typeof APP_VERSION !== "undefined" ? APP_VERSION : "028"),
+      version: (typeof APP_VERSION !== "undefined" ? APP_VERSION : "037"),
+      gameId: this.gameId,
       savedAt: Date.now(),
       humanName: this.humanName,
       numAI: this.numAI,
@@ -2741,6 +2643,7 @@ class GameState {
       });
       return e;
     });
+    g.gameId = data.gameId || g.gameId;
     g.turnIndex = data.turnIndex || 0;
     g.turnNumber = data.turnNumber || 1;
     g.phase = data.phase || "playing";

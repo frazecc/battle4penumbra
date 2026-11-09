@@ -1,19 +1,12 @@
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 036 – VERSION: v036
+BATTLE FOR PENUMBRA – consegna 037 – VERSION: v037
 ================================================================================
-FIX resume partita
-- resumeSavedGame: init mappa, gameUIStarted, pulizia pending, avvio IA se tocca
-- carica da cloud o localStorage
+1. Trappole: pausa obbligatoria; ordine dal giocatore successivo; mai nel proprio turno;
+   una sola attivazione; niente risposta a trappola; combattimento a fasi
+2. Click cella: pannello luogo (sx) + creatura (dx) + Muovi se tua
+3. Mini-carte senza nome
+4. Popup esplorazione = stesso sistema "Ho capito" (autoskip)
+5. Save oggettivo con gameId (stato partita unico)
 
-LOGIN
-- Se c'è sessione: "Riconosco questa presenza… sei tu?"
-  - Sono io → home
-  - Non sono io → form login/password
-
-MAPPA
-- Creature disegnate come carte miniature
-  - ATK in basso a sinistra, PV in basso a destra
-  - Icona tempio, striscia colore, bordo oro/rosso
-
-FILE: js/app.js, js/map.js, index.html
+FILE: js/game.js, js/map.js, js/app.js, js/auth.js, index.html
 ================================================================================

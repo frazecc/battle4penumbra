@@ -129,16 +129,25 @@ async function cloudSaveGame(saveData) {
   if (!sb) return { ok: true, backend: "local" };
 
   const row = {
-    owner: session.username,
-    participants: payload.participants,
+    owner: payload.owner || session.username,
+    participants: payload.participants || [session.username],
     status: payload.phase === "ended" ? "ended" : "active",
     state: payload,
     updated_at: new Date().toISOString()
   };
-  // Upsert by owner active game (simple: one active game per owner for now)
-  const { data: existing } = await sb.from("games").select("id").eq("owner", session.username).eq("status", "active").limit(1);
-  if (existing && existing.length) {
-    const { error } = await sb.from("games").update(row).eq("id", existing[0].id);
+  // Stato OGGETTIVO della partita: upsert per gameId nello state
+  const gid = payload.gameId;
+  let existing = null;
+  if (gid) {
+    const res = await sb.from("games").select("id, state").eq("status", "active");
+    if (res.data) existing = res.data.find(r => r.state && r.state.gameId === gid);
+  }
+  if (!existing) {
+    const res2 = await sb.from("games").select("id").eq("owner", session.username).eq("status", "active").limit(1);
+    if (res2.data && res2.data.length) existing = res2.data[0];
+  }
+  if (existing && existing.id) {
+    const { error } = await sb.from("games").update(row).eq("id", existing.id);
     if (error) return { ok: false, error: error.message, backend: "supabase" };
   } else {
     const { error } = await sb.from("games").insert(row);

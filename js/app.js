@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "036";
+const APP_VERSION = "037";
 
 let game = null;
 let currentScreen = "auth";
@@ -553,6 +553,7 @@ function startGameUI() {
 // ---------- TRAP POPUP ----------
 window.onTrapPrompt = function(pending) {
   const modal = document.getElementById("trap-modal");
+  if (modal) { modal.style.zIndex = "2800"; }
   const list = document.getElementById("trap-options");
   const title = document.getElementById("trap-title");
   if (!modal || !list) return;
@@ -1409,12 +1410,14 @@ window.onMovePathPrompt = function(pending, unit) {
 };
 
 window.onDiscoveryPrompt = function(names) {
-  const modal = document.getElementById("discovery-modal");
-  if (!modal) return;
-  const body = document.getElementById("discovery-body");
-  if (body) body.innerHTML = "Hai scoperto: <strong>" + names.join(", ") + "</strong>";
-  modal.classList.remove("hidden");
-  modal.style.display = "flex";
+  const list = (names || []).join(", ");
+  if (typeof enqueueGamePopup === "function") {
+    enqueueGamePopup("Esplorazione<br><br>Hai scoperto: <strong>" + list + "</strong>", {
+      buttonLabel: "Ho capito",
+      allowMap: true,
+      autoSkippable: true
+    });
+  }
 };
 
 window.onSpellTargetPrompt = function(pending) {
@@ -1478,4 +1481,78 @@ async function offerResumeOrNew(startNewFn) {
   };
 }
 
+
+
+
+window.onHexInspect = function(q, r, unit) {
+  const g = window.game;
+  if (!g) return;
+  const key = q + "," + r;
+  const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
+  let placeName = (g.tileDisplayName && g.tileDisplayName(type)) || type;
+  let placeDesc = "";
+  if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
+    placeName = (TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "") + (TILE_TYPE_DEFS[type].name || placeName);
+    placeDesc = TILE_TYPE_DEFS[type].desc || "";
+  }
+  if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
+    placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
+    placeDesc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || placeDesc;
+  }
+
+  let panel = document.getElementById("hex-inspect-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "hex-inspect-panel";
+    panel.style.cssText = "position:fixed;inset:0;z-index:2700;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;padding:16px;";
+    document.body.appendChild(panel);
+  }
+  const left = "<div style='flex:1;min-width:200px;background:#1B2838;border:1px solid #64FFDA;border-radius:12px;padding:16px;'>" +
+    "<div style='color:#64FFDA;font-weight:700;font-size:1.1rem;margin-bottom:8px;'>Luogo</div>" +
+    "<div style='font-size:1.05rem;margin-bottom:8px;'>" + placeName + "</div>" +
+    "<div style='opacity:0.75;font-size:0.85rem;margin-bottom:8px;'>(" + q + "," + r + ")</div>" +
+    "<div style='line-height:1.5;color:#E0D6C8;'>" + (placeDesc || "Nessuna descrizione.") + "</div></div>";
+
+  let right = "<div style='flex:1;min-width:200px;background:#1B2838;border:1px solid #FFD54F;border-radius:12px;padding:16px;'>" +
+    "<div style='color:#FFD54F;font-weight:700;font-size:1.1rem;margin-bottom:8px;'>Creatura</div>";
+  if (unit) {
+    const owner = g.getEntityById(unit.ownerId);
+    const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
+    const hp = unit.currentHp !== undefined ? unit.currentHp : unit.hp;
+    right += "<div style='font-size:1.1rem;font-weight:700;'>" + unit.name + "</div>" +
+      "<div style='margin:8px 0;'>⚔ " + atk + " / ❤ " + hp + (unit.shields ? " · scudi " + unit.shields : "") + "</div>" +
+      "<div style='opacity:0.8;'>Proprietario: " + (owner ? owner.name : "?") + (owner && owner.isFallen ? " [CADUTO]" : "") + "</div>" +
+      (unit.isWithered ? "<div style='color:#FF8A65;margin-top:6px;'>AVVIZZITA</div>" : "") +
+      "<div id='hex-inspect-actions' style='display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;'></div>";
+  } else {
+    right += "<div style='opacity:0.7;'>Nessuna creatura su questa cella.</div>";
+  }
+  right += "</div>";
+
+  panel.innerHTML = "<div style='display:flex;gap:16px;flex-wrap:wrap;max-width:820px;width:100%;'>" + left + right +
+    "<div style='width:100%;text-align:center;margin-top:8px;'><button class='btn' id='hex-inspect-close'>Chiudi</button></div></div>";
+  panel.style.display = "flex";
+  document.getElementById("hex-inspect-close").onclick = function() {
+    panel.style.display = "none";
+  };
+
+  const actions = document.getElementById("hex-inspect-actions");
+  if (actions && unit && g.currentEntity && g.currentEntity.isHuman && unit.ownerId === g.currentEntity.id && g.phase === "playing") {
+    const btnM = document.createElement("button");
+    btnM.className = "btn btn-primary";
+    btnM.textContent = "Muovi";
+    btnM.onclick = function() {
+      panel.style.display = "none";
+      if (unit.instanceId) g.selectUnit(unit.instanceId);
+      if (typeof renderGameState === "function") renderGameState();
+      if (typeof MapRenderer !== "undefined") MapRenderer.render();
+    };
+    if (unit.isWithered) {
+      btnM.disabled = true;
+      btnM.style.opacity = "0.5";
+      btnM.title = "Avvizzita";
+    }
+    actions.appendChild(btnM);
+  }
+};
 

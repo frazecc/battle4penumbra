@@ -503,16 +503,10 @@ const MapRenderer = {
       ctx.font = Math.max(14, 16 * this.scale) + "px \"Segoe UI Emoji\",\"Apple Color Emoji\",Arial";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(tIcon, cx, top + h * 0.38);
+      ctx.fillText(tIcon, cx, top + h * 0.42);
     }
 
-    // Nome corto
-    const nm = (unit.name || "?").split(" ")[0];
-    ctx.fillStyle = "#E0E0E0";
-    ctx.font = "bold " + Math.max(8, 9 * this.scale) + "px Arial";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(nm.substring(0, 10), cx, top + h * 0.58);
+    // (v037: niente nome sulla mini-carta — troppo congestionato)
 
     // ATK basso sx, PV basso dx
     const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
@@ -749,21 +743,23 @@ const MapRenderer = {
           }
         }
 
-        // 5) Click su creatura propria → SOLO anteprima (mai moveMode)
-        if (!suppressPreview) {
+        // 5) Click su cella visibile → pannello luogo (+ creatura se c'è)
+        if (!suppressPreview && !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode && !this.game.sacrificeMode && !this.game.pendingTeleportStep) {
           const human = this.game.entities.find(e => e.isHuman);
-          if (human && this.game.currentEntity && this.game.currentEntity.isHuman &&
-              !this.game.moveMode && !this.game.playMode && !this.game.attachMode && !this.game.targetMode && !this.game.sacrificeMode) {
-            const unit = human.field.find(u => u.q === q && u.r === r);
-            if (unit) {
-              this.game.selectedUnit = unit;
+          if (!human) return;
+          // Fog: click non fa nulla
+          if (!this.game.isVisibleTo(human, q, r)) return;
+          const anyUnit = this.game.getUnitAt(q, r);
+          if (typeof window.onHexInspect === "function") {
+            window.onHexInspect(q, r, anyUnit);
+            if (anyUnit && anyUnit.ownerId === human.id && this.game.currentEntity && this.game.currentEntity.isHuman) {
+              this.game.selectedUnit = anyUnit;
               this.game.selectedCard = null;
               this.game.moveMode = false;
-              if (typeof showCardDetail === "function") showCardDetail(unit, { fromField: true });
-              if (window.onGameUpdate) window.onGameUpdate();
-              this.render();
-              return;
             }
+            if (window.onGameUpdate) window.onGameUpdate();
+            this.render();
+            return;
           }
         }
       }

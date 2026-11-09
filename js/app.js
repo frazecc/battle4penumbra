@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "037";
+const APP_VERSION = "038";
 
 let game = null;
 let currentScreen = "auth";
@@ -1489,15 +1489,23 @@ window.onHexInspect = function(q, r, unit) {
   if (!g) return;
   const key = q + "," + r;
   const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
-  let placeName = (g.tileDisplayName && g.tileDisplayName(type)) || type;
-  let placeDesc = "";
-  if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
-    placeName = (TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "") + (TILE_TYPE_DEFS[type].name || placeName);
-    placeDesc = TILE_TYPE_DEFS[type].desc || "";
-  }
-  if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
-    placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
-    placeDesc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || placeDesc;
+  const human = g.entities.find(e => e.isHuman);
+  const discovered = g.isCellDiscovered(q, r, human);
+  let placeName, placeDesc;
+  if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0") {
+    placeName = "? Terreno inesplorato";
+    placeDesc = "Non ancora scoperto. Il tipo si rivela a fine turno se una creatura termina qui.";
+  } else {
+    placeName = (g.tileDisplayName && g.tileDisplayName(type)) || type;
+    placeDesc = "";
+    if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
+      placeName = (TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "") + (TILE_TYPE_DEFS[type].name || placeName);
+      placeDesc = TILE_TYPE_DEFS[type].desc || "";
+    }
+    if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
+      placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
+      placeDesc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || placeDesc;
+    }
   }
 
   let panel = document.getElementById("hex-inspect-panel");
@@ -1543,7 +1551,9 @@ window.onHexInspect = function(q, r, unit) {
     btnM.textContent = "Muovi";
     btnM.onclick = function() {
       panel.style.display = "none";
-      if (unit.instanceId) g.selectUnit(unit.instanceId);
+      if (unit && unit.instanceId) {
+        g.selectUnit(unit.instanceId);
+      }
       if (typeof renderGameState === "function") renderGameState();
       if (typeof MapRenderer !== "undefined") MapRenderer.render();
     };

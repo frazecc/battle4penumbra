@@ -1,5 +1,5 @@
 ================================================================================
-BATTLE FOR PENUMBRA – situazione attuale – VERSION: v041
+BATTLE FOR PENUMBRA – situazione attuale – VERSION: v042
 ================================================================================
 
 ################################################################################
@@ -53,9 +53,9 @@ Stack: HTML/CSS/JS vanilla, opzionale Supabase (auth + salvataggio stato in tabe
 - js/map.js – rendering canvas, click, path highlight
 - js/app.js – UI, draft, popup, resume, versioning (APP_VERSION)
 
-Versione corrente codice consegnato: **v041**
+Versione corrente codice consegnato: **v042**
 
-FIX v041: IA non usa più targetMode UI per le magie (cast diretto); confirmSpellCast non fallisce su troppi bersagli; timeout IA non resta appeso su waitForPopups (max 2.5s). (allineamento documentazione).
+FIX v042: IA non usa più targetMode UI per le magie (cast diretto); confirmSpellCast non fallisce su troppi bersagli; timeout IA non resta appeso su waitForPopups (max 2.5s). (allineamento documentazione).
 
 ################################################################################
 # FLUSSO UTENTE

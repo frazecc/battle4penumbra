@@ -48,6 +48,7 @@ class Entity {
     cost = cost || 0;
     if (this.canPay(cost)) {
       this.mana -= cost;
+      if (typeof window !== "undefined" && window.refreshManaUI) window.refreshManaUI();
       return true;
     }
     return false;

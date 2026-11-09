@@ -390,26 +390,85 @@ var MapRenderer = {
     ctx.closePath();
     ctx.fillStyle = fill;
     ctx.fill();
+
+    // Montagne: ombreggiatura + picchi
+    if (type === "mountain" && (visible || true)) {
+      const grd = ctx.createLinearGradient(cx, cy - s, cx, cy + s);
+      grd.addColorStop(0, "#8D6E63");
+      grd.addColorStop(0.45, "#5D4037");
+      grd.addColorStop(1, "#3E2723");
+      ctx.fillStyle = visible ? grd : "#2A1C18";
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(verts[i].x, verts[i].y);
+      ctx.closePath();
+      ctx.fill();
+      // Picchi
+      if (visible) {
+        ctx.fillStyle = "#D7CCC8";
+        ctx.strokeStyle = "#4E342E";
+        ctx.lineWidth = Math.max(1, 1.2 * this.scale);
+        const peaks = [
+          [cx, cy - s * 0.35],
+          [cx - s * 0.28, cy + s * 0.05],
+          [cx + s * 0.3, cy + s * 0.02]
+        ];
+        peaks.forEach(([px, py], i) => {
+          const h = s * (0.28 - i * 0.04);
+          const w = s * 0.16;
+          ctx.beginPath();
+          ctx.moveTo(px, py - h);
+          ctx.lineTo(px - w, py + h * 0.35);
+          ctx.lineTo(px + w, py + h * 0.35);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        });
+      }
+    }
+
     ctx.strokeStyle = stroke;
     ctx.lineWidth = Math.max(0.7, 1 * this.scale);
     ctx.stroke();
 
     // "?" sulle celle da scoprire (visibili ma non flippate)
-    if (visible && !discovered && type !== "mountain") {
+    if (visible && !discovered && type !== "mountain" && type !== "city") {
       ctx.fillStyle = "rgba(255,255,255,0.85)";
       ctx.font = `bold ${Math.max(14, 18 * this.scale)}px Arial`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("?", cx, cy);
     }
-    // Overlay fumoso sulla fog
+    // Overlay fumoso sulla fog (l'Altare tiene il bordo dorato sopra)
     if (!visible) {
-      ctx.fillStyle = "rgba(0,0,0,0.45)";
+      ctx.fillStyle = "rgba(0,0,0,0.5)";
       ctx.beginPath();
       ctx.moveTo(verts[0].x, verts[0].y);
       for (let i = 1; i < 6; i++) ctx.lineTo(verts[i].x, verts[i].y);
       ctx.closePath();
       ctx.fill();
+    }
+
+    // Altare: bordo dorato SEMPRE (anche in fog)
+    if (type === "city" || (q === 0 && r === 0)) {
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < 6; i++) ctx.lineTo(verts[i].x, verts[i].y);
+      ctx.closePath();
+      ctx.strokeStyle = "#FFD700";
+      ctx.lineWidth = Math.max(2.5, 3.2 * this.scale);
+      ctx.stroke();
+      ctx.strokeStyle = "#FFF8E1";
+      ctx.lineWidth = Math.max(1, 1.2 * this.scale);
+      ctx.stroke();
+      if (!visible) {
+        // piccola stella affievolita
+        ctx.fillStyle = "rgba(255, 215, 0, 0.55)";
+        ctx.font = `bold ${Math.max(11, 14 * this.scale)}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("★", cx, cy);
+      }
     }
     // Icone solo se cella scoperta (flippata) o tempio proprio
     if (visible && discovered) {
@@ -755,11 +814,19 @@ c.addEventListener("click", e => {
           if (!human) { /* skip */ }
           else {
             const anyUnit = this.game.getUnitAt(q, r);
-            // Fog: niente, salvo click sulla propria creatura
+            const keyHex = q + "," + r;
+            const cellType = CELL_TYPE.get(keyHex);
+            const isAltar = cellType === "city" || (q === 0 && r === 0);
+            // Fog: niente, salvo propria creatura o Altare (dettagli luogo)
             const onOwnUnit = anyUnit && anyUnit.ownerId === human.id;
-            if (!onOwnUnit && !this.game.isVisibleTo(human, q, r)) {
+            if (!onOwnUnit && !isAltar && !this.game.isVisibleTo(human, q, r)) {
               // click nel fog: ignora
             } else {
+              // In fog sull'altare: ispezione senza rivelare creature
+              if (isAltar && !this.game.isVisibleTo(human, q, r) && !onOwnUnit) {
+                if (typeof window.onHexInspect === "function") window.onHexInspect(q, r, null);
+                return;
+              }
               // Se è la tua creatura nel tuo turno → entra subito in Muovi
               if (onOwnUnit && this.game.currentEntity && this.game.currentEntity.isHuman && !anyUnit.isWithered) {
                 this.game.selectUnit(anyUnit.instanceId);
@@ -795,7 +862,7 @@ c.addEventListener("click", e => {
     c.addEventListener("wheel", e => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      this.scale = Math.min(Math.max(this.scale * delta, 0.25), 3.0);
+      this.scale = Math.min(Math.max(this.scale * delta, 0.78), 2.8);
       this.render();
     }, { passive: false });
   }

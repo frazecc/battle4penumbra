@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "041";
+const APP_VERSION = "042";
 
 let game = null;
 let currentScreen = "auth";
@@ -834,7 +834,20 @@ function showCardDetail(card, opts) {
 
 window.showCardDetail = showCardDetail;
 window.openGraveyard = openGraveyard;
-window.onGameUpdate = function(){ renderGameState(); if (typeof persistGame==='function') persistGame(); };
+function refreshManaUI() {
+  if (!game || !game.currentEntity) return;
+  const manaInfo = document.getElementById("mana-info");
+  if (manaInfo) {
+    manaInfo.innerHTML = "Mana: <strong>" + game.currentEntity.mana + "</strong> / " + game.currentEntity.manaMax;
+  }
+}
+window.refreshManaUI = refreshManaUI;
+window.onGameUpdate = function(){
+  renderGameState();
+  refreshManaUI();
+  if (typeof persistGame==='function') persistGame();
+};
+
 
 function renderGameState() {
   if (!game) return;
@@ -1405,7 +1418,8 @@ window.onMovePathPrompt = function(pending, unit) {
   document.getElementById("btn-move-yes").onclick = function() {
     panel.style.display = "none";
     if (game) game.confirmMovePath(true);
-    if (typeof renderGameState === "function") renderGameState();
+    if (typeof window.onGameUpdate === "function") window.onGameUpdate();
+    else if (typeof renderGameState === "function") renderGameState();
     if (typeof MapRenderer !== "undefined") MapRenderer.render();
   };
   document.getElementById("btn-move-no").onclick = function() {

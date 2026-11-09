@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "040";
+const APP_VERSION = "041";
 
 let game = null;
 let currentScreen = "auth";

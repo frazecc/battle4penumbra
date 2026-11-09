@@ -763,8 +763,7 @@ class GameState {
       return false;
     }
     if (targets.length > need) {
-      this.addLog("Troppi bersagli.");
-      return false;
+      targets = targets.slice(0, need);
     }
     const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
     if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); this.targetMode = null; return false; }
@@ -2191,6 +2190,13 @@ class GameState {
     const ai = this.currentEntity;
     if (!ai || ai.isHuman || this.phase !== "playing") return;
     this._aiTurnLock = true;
+    // Pulisci stati UI residui che possono bloccare il turno
+    this.targetMode = null;
+    this.pendingSpellTarget = null;
+    this.pendingMovePath = null;
+    this.moveMode = false;
+    this.playMode = false;
+    this.attachMode = false;
     // CADUTO: solo movimento creature (chase o random)
     if (ai.isFallen) {
       this._runFallenTurn(ai);
@@ -2271,16 +2277,16 @@ class GameState {
       }
     }
 
-    // --- 3) Magie a bersaglio: preferisci uccidere o danneggiare minacce ---
+    // --- 3) Magie a bersaglio (risoluzione diretta IA, niente UI targetMode) ---
+    this.targetMode = null;
+    this.pendingSpellTarget = null;
     const curses = ai.hand.filter(c => c.type === "maledizione" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost));
-    for (const card of curses) {
+    if (curses.length) {
       const enemies = [];
       for (const ent of this.entities) {
         if (ent.id === ai.id || ent.isFallen) continue;
         for (const u of ent.field) enemies.push(u);
       }
-      if (!enemies.length) break;
-      // Mira al più forte / con artefatto
       enemies.sort((a, b) => {
         const ea = this.getEntityById(a.ownerId);
         const eb = this.getEntityById(b.ownerId);
@@ -2288,14 +2294,18 @@ class GameState {
         const artB = eb && eb.artifactAttachedTo === b.instanceId ? 5 : 0;
         return ((b.atk||0)+(b.currentHp||0)+artB) - ((a.atk||0)+(a.currentHp||0)+artA);
       });
-      const target = enemies[0];
-      if (card.needsTarget || card.effectId) {
-        this.targetMode = { card, effectId: card.effectId, remaining: card.multiTarget || 1, targets: [] };
-        this.selectTargetUnit(target);
-        if (this.targetMode && this.targetMode.targets.length >= 1) {
-          this.confirmSpellCast(true);
+      if (enemies.length) {
+        const card = curses[0];
+        const need = Math.max(1, card.multiTarget || 1);
+        const targets = enemies.slice(0, need);
+        const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
+        if (ai.canPay(cost)) {
+          ai.pay(cost);
+          ai.hand = ai.hand.filter(c => c.instanceId !== card.instanceId);
+          ai.graveyard.push(card);
+          targets.forEach(t => this._resolveEffect(card.effectId, ai, t));
+          this.addLog(ai.name + " lancia " + card.name + "!", true);
         }
-        break; // una magia per turno
       }
     }
 
@@ -2363,15 +2373,27 @@ class GameState {
     this._aiEndTurnTimeout = setTimeout(async () => {
       this._aiEndTurnTimeout = null;
       this._aiTurnLock = false;
+      this.targetMode = null;
+      this.pendingSpellTarget = null;
       if (typeof window !== "undefined" && window.waitForPopups) {
-        await window.waitForPopups();
+        try {
+          await Promise.race([
+            window.waitForPopups(),
+            new Promise(r => setTimeout(r, 2500))
+          ]);
+        } catch (err) { /* ignore */ }
       }
       if (this.currentEntity && this.currentEntity.isHuman) {
         this.addLog("(timeout IA ignorato: è il turno dell'umano)");
         if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
         return;
       }
-      this.endTurn();
+      try {
+        this.endTurn();
+      } catch (err) {
+        console.error("endTurn IA", err);
+        this._aiTurnLock = false;
+      }
       if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
       if (this.phase === "ended" && window.onGameEnd) window.onGameEnd(this);
       else if (this.currentEntity && !this.currentEntity.isHuman && this.phase === "playing") {

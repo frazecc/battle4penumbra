@@ -2160,6 +2160,14 @@ class GameState {
       case "ev_hp_perm_1":
         if (self) { self.currentHp = (self.currentHp || 0) + 1; this.addLog(self.name + " +1 PV"); }
         break;
+      case "ev_mana_gain_1":
+        owner.mana = (owner.mana || 0) + 1;
+        this.addLog(owner.name + " +1 mana (ora " + owner.mana + ")");
+        break;
+      case "ev_mana_gain_2":
+        owner.mana = (owner.mana || 0) + 2;
+        this.addLog(owner.name + " +2 mana (ora " + owner.mana + ")");
+        break;
       case "ev_wither_self":
         if (self) { self.isWithered = true; this.addLog(self.name + " diventa avvizzita"); }
         break;
@@ -2372,58 +2380,78 @@ class GameState {
   }
 
   _runFallenTurn(ai) {
-    this.addLog(ai.name + " (caduto) agisce...");
+    this._aiLog("CADUTO", ai.name + " inizia turno — obiettivo: uccidere creature avversarie (1 passo)");
     for (const unit of [...ai.field]) {
-      let target = null;
-      if (unit.chaseTargetId) {
-        target = this.getUnitByInstanceId(unit.chaseTargetId);
-        if (!target) unit.chaseTargetId = null;
-      }
-      if (!target) {
-        for (const ent of this.entities) {
-          if (ent.id === ai.id) continue;
-          for (const u of ent.field) {
-            if (hexDistance(unit.q, unit.r, u.q, u.r) <= 2) {
-              target = u;
-              unit.chaseTargetId = u.instanceId;
-              break;
-            }
-          }
-          if (target) break;
+      // Cerca la preda più vicina sulla mappa
+      let bestTarget = null, bestDist = 999;
+      for (const ent of this.entities) {
+        if (ent.id === ai.id) continue;
+        for (const u of ent.field) {
+          const d = hexDistance(unit.q, unit.r, u.q, u.r);
+          if (d < bestDist) { bestDist = d; bestTarget = u; }
         }
       }
-      if (target) {
+      if (unit.chaseTargetId) {
+        const t = this.getUnitByInstanceId(unit.chaseTargetId);
+        if (t) { bestTarget = t; bestDist = hexDistance(unit.q, unit.r, t.q, t.r); }
+        else unit.chaseTargetId = null;
+      }
+      if (bestTarget) {
+        unit.chaseTargetId = bestTarget.instanceId;
+        this._aiLog("CADUTO", unit.name + " insegue " + bestTarget.name + " (dist=" + bestDist + ") @(" + bestTarget.q + "," + bestTarget.r + ")");
+        // Se adiacente → attacca
+        if (bestDist <= 1) {
+          this._aiLog("CADUTO", "In range: combatte contro " + bestTarget.name);
+          this._resolveCombat(unit, bestTarget, unit.q, unit.r);
+          continue;
+        }
+        // Muovi di 1 verso il target
         const nbs = this._hexesInRange(unit.q, unit.r, 1);
         let best = null, bestD = 999;
         for (const [q, r] of nbs) {
           if (CELL_TYPE.get(q + "," + r) === "mountain") continue;
           const occ = this.getUnitAt(q, r);
-          if (occ && occ.instanceId !== target.instanceId) continue;
-          const d = hexDistance(q, r, target.q, target.r);
+          if (occ && occ.instanceId !== bestTarget.instanceId) continue;
+          const d = hexDistance(q, r, bestTarget.q, bestTarget.r);
           if (d < bestD) { bestD = d; best = [q, r]; }
         }
         if (best) {
           const occ = this.getUnitAt(best[0], best[1]);
           if (occ && occ.ownerId !== ai.id) {
+            this._aiLog("CADUTO", "Attacca " + occ.name + " su (" + best[0] + "," + best[1] + ")");
             this._resolveCombat(unit, occ, unit.q, unit.r);
           } else if (!occ) {
-            unit.q = best[0];
-            unit.r = best[1];
-            this.addLog(unit.name + " (caduto) insegue verso (" + best[0] + "," + best[1] + ")");
+            unit.q = best[0]; unit.r = best[1];
+            this._aiLog("CADUTO", unit.name + " avanza a (" + best[0] + "," + best[1] + ") verso " + bestTarget.name);
           }
+        } else {
+          this._aiLog("CADUTO", unit.name + " bloccato, nessun passo utile");
         }
       } else {
+        // Nessuna preda: esplora verso altare
         const nbs = this._hexesInRange(unit.q, unit.r, 1).filter(([q, r]) => {
           return CELL_TYPE.get(q + "," + r) !== "mountain" && !this.getUnitAt(q, r);
         });
         if (nbs.length) {
-          const [q, r] = nbs[Math.floor(Math.random() * nbs.length)];
-          unit.q = q;
-          unit.r = r;
-          this.addLog(unit.name + " (caduto) vaga su (" + q + "," + r + ")");
+          nbs.sort((a, b) => hexDistance(a[0], a[1], 0, 0) - hexDistance(b[0], b[1], 0, 0));
+          const [q, r] = nbs[0];
+          unit.q = q; unit.r = r;
+          this._aiLog("CADUTO", unit.name + " nessuna preda → va verso Altare (" + q + "," + r + ")");
+        } else {
+          this._aiLog("CADUTO", unit.name + " nessuna mossa possibile");
         }
       }
     }
+  }
+
+  _aiLog(who, msg, data) {
+    const line = "[" + who + "] " + msg;
+    if (typeof console !== "undefined") {
+      if (data !== undefined) console.log(line, data);
+      else console.log(line);
+    }
+    // anche nel log partita in forma compatta
+    this.addLog(line);
   }
 
   runAITurn() {
@@ -2464,64 +2492,65 @@ class GameState {
       return;
     }
     this.addLog(ai.name + " sta pensando...");
-    // =====================================================
-    // IA – obiettivi (in ordine):
-    // 1) Artefatto SEMPRE sul campo (priorità assoluta)
-    // 2) Evocare mostri sul tempio se libero e mana lo permette
-    // 3) Lanciare magie utili su bersagli di valore
-    // 4) Attaccare se favorevole (adiacente, non suicida se evitabile)
-    // 5) Avanzare verso nemici / Altare senza sprecare mana
-    // =====================================================
+    this._aiLog("AI", "=== " + ai.name + " turno " + this.turnNumber + " mana " + ai.mana + "/" + ai.manaMax + " ===", {
+      field: ai.field.map(u => u.name + "@" + u.q + "," + u.r + (u.isWithered ? " [W]" : "")),
+      hand: ai.hand.map(c => c.name + "(c" + (c.currentCost !== undefined ? c.currentCost : c.cost) + ")"),
+      artifactOnField: ai.hasArtifactOnField()
+    });
 
-    // --- 1) Artefatto ---
+    // 1) ARTEFATTO obbligatorio
     if (!ai.hasArtifactOnField()) {
+      this._aiLog("AI", "Priorità #1: Artefatto non sul campo");
       const artCard = ai.hand.find(c => c.id === "artifact" || c.type === "artefatto");
       if (artCard && ai.canPay(artCard.currentCost || 0)) {
-        const creatures = ai.field.filter(u => u.type === "mostro" || u.type === "mostrissimo");
+        let creatures = ai.field.filter(u => !u.isWithered || ai.field.length === 1);
+        if (!creatures.length) creatures = ai.field.slice();
         if (creatures.length) {
-          // Preferisci la creatura più tosta
           creatures.sort((a, b) => ((b.atk||0)+(b.currentHp||0)) - ((a.atk||0)+(a.currentHp||0)));
-          this.selectedCard = artCard;
-          this.attachMode = true;
+          this._aiLog("AI", "Lega Artefatto a " + creatures[0].name);
+          this.selectedCard = artCard; this.attachMode = true;
           this.attachArtifactToUnit(creatures[0].instanceId);
         } else {
-          const mon = ai.hand
-            .filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
-            .sort((a, b) => (b.cost||0) - (a.cost||0))[0];
-          if (mon) {
-            const target = this._findPlacementHex(ai);
-            if (target) {
-              this.selectedCard = mon; this.playMode = true; this.playCardOnHex(target[0], target[1]);
-              if (ai.field.length) {
-                this.selectedCard = artCard; this.attachMode = true;
-                this.attachArtifactToUnit(ai.field[0].instanceId);
-              }
+          const mon = ai.hand.filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
+            .sort((a, b) => ((b.atk||0)+(b.hp||0)) - ((a.atk||0)+(a.hp||0)))[0];
+          const place = this._findPlacementHex(ai);
+          if (mon && place) {
+            this._aiLog("AI", "Evoca " + mon.name + " per poter legare Artefatto");
+            this.selectedCard = mon; this.playMode = true;
+            this.playCardOnHex(place[0], place[1]);
+            if (ai.field.length) {
+              this.selectedCard = artCard; this.attachMode = true;
+              this.attachArtifactToUnit(ai.field[0].instanceId);
             }
+          } else {
+            this._aiLog("AI", "Impossibile mettere Artefatto ora (niente creatura/tempio libero)");
           }
         }
+      } else {
+        this._aiLog("AI", "Artefatto non giocabile (manca carta o mana)");
       }
+    } else {
+      this._aiLog("AI", "Artefatto OK sul campo");
     }
 
-    // --- 2) Evocazioni (dal più costoso giocabile: valore) ---
+    // 2) EVOCA mostro se tempio libero
     const place = this._findPlacementHex(ai);
     if (place) {
-      const monsters = ai.hand
-        .filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
-        .sort((a, b) => {
-          const va = (a.atk||0) + (a.hp||0) + (a.cost||0);
-          const vb = (b.atk||0) + (b.hp||0) + (b.cost||0);
-          return vb - va;
-        });
+      const monsters = ai.hand.filter(c => c.type === "mostro" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost))
+        .sort((a, b) => ((b.atk||0)+(b.hp||0)+(b.cost||0)) - ((a.atk||0)+(a.hp||0)+(a.cost||0)));
       if (monsters[0]) {
-        this.selectedCard = monsters[0];
-        this.playMode = true;
+        this._aiLog("AI", "Evoca " + monsters[0].name + " sul tempio (" + place[0] + "," + place[1] + ")");
+        this.selectedCard = monsters[0]; this.playMode = true;
         this.playCardOnHex(place[0], place[1]);
+      } else {
+        this._aiLog("AI", "Tempio libero ma nessun mostro giocabile");
       }
+    } else {
+      this._aiLog("AI", "Tempio occupato o non disponibile per evocazione");
     }
 
-    // --- 3) Magie a bersaglio (risoluzione diretta IA, niente UI targetMode) ---
-    this.targetMode = null;
-    this.pendingSpellTarget = null;
+    // 3) MAGIE: priorità kill / debuff minacce umane
+    const human = this.entities.find(e => e.isHuman && !e.isFallen);
     const curses = ai.hand.filter(c => c.type === "maledizione" && ai.canPay(c.currentCost !== undefined ? c.currentCost : c.cost));
     if (curses.length) {
       const enemies = [];
@@ -2530,97 +2559,119 @@ class GameState {
         for (const u of ent.field) enemies.push(u);
       }
       enemies.sort((a, b) => {
+        // priorità: umano > artefatto > stats
         const ea = this.getEntityById(a.ownerId);
         const eb = this.getEntityById(b.ownerId);
-        const artA = ea && ea.artifactAttachedTo === a.instanceId ? 5 : 0;
-        const artB = eb && eb.artifactAttachedTo === b.instanceId ? 5 : 0;
-        return ((b.atk||0)+(b.currentHp||0)+artB) - ((a.atk||0)+(a.currentHp||0)+artA);
+        const huA = ea && ea.isHuman ? 20 : 0;
+        const huB = eb && eb.isHuman ? 20 : 0;
+        const artA = ea && ea.artifactAttachedTo === a.instanceId ? 8 : 0;
+        const artB = eb && eb.artifactAttachedTo === b.instanceId ? 8 : 0;
+        return (huB+artB+(b.atk||0)+(b.currentHp||0)) - (huA+artA+(a.atk||0)+(a.currentHp||0));
       });
       if (enemies.length) {
-        const card = curses[0];
+        const card = curses.sort((a, b) => (b.cost||0) - (a.cost||0))[0];
         const need = Math.max(1, card.multiTarget || 1);
         const targets = enemies.slice(0, need);
+        this._aiLog("AI", "Lancia " + card.name + " su " + targets.map(t => t.name).join(", "), { effectId: card.effectId });
         const cost = card.currentCost !== undefined ? card.currentCost : card.cost;
         if (ai.canPay(cost)) {
           ai.pay(cost);
           ai.hand = ai.hand.filter(c => c.instanceId !== card.instanceId);
           ai.graveyard.push(card);
           try {
-            if (typeof this._resolveEffect !== "function") {
-              const msg = "[AI SPELL] _resolveEffect NON è una funzione — magia saltata: " + card.name + " effectId=" + card.effectId;
-              this.addLog(msg, true);
-              console.error(msg);
-            } else {
+            if (typeof this._resolveEffect === "function") {
               targets.forEach(t => this._resolveEffect(card.effectId, ai, t));
               this.addLog(ai.name + " lancia " + card.name + "!", true);
+            } else {
+              this._aiLog("AI", "ERRORE: _resolveEffect mancante per " + card.effectId);
             }
           } catch (err) {
-            const msg = "[AI SPELL ERROR] " + card.name + " effectId=" + card.effectId + " — " + (err && err.message);
-            this.addLog(msg, true);
-            console.error(msg, err);
+            this._aiLog("AI", "ERRORE magia " + card.name + ": " + (err && err.message));
+            console.error(err);
           }
         }
+      } else {
+        this._aiLog("AI", "Ha magie ma nessun bersaglio");
       }
     }
 
-    // --- 4) Combattimento favorevole ---
+    // 4) COMBATTIMENTO favorevole
     for (const unit of [...ai.field]) {
-      if (unit.isWithered) continue;
+      if (unit.isWithered) {
+        this._aiLog("AI", unit.name + " avvizzita: non attacca");
+        continue;
+      }
       const nbs = this._hexesInRange(unit.q, unit.r, 1);
-      let bestAtk = null;
+      let bestAtk = null, bestScore = -1e9;
       for (const [q, r] of nbs) {
         const enemy = this.getUnitAt(q, r);
         if (!enemy || enemy.ownerId === ai.id) continue;
         const atkP = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
         const defHp = enemy.currentHp || 1;
-        // Attacca se uccidi o se hai almeno pari attacco
-        if (atkP >= defHp || atkP >= ((enemy.atk || 0))) {
-          bestAtk = [q, r];
-          if (atkP >= defHp) break; // priorità kill
-        }
+        const defAtk = (enemy.atk || 0) + (enemy.permanentAtkBonus || 0);
+        let score = 0;
+        if (atkP >= defHp) score += 50; // kill
+        else score += atkP * 2;
+        if (defAtk >= (unit.currentHp || 1)) score -= 30; // suicidio
+        const eo = this.getEntityById(enemy.ownerId);
+        if (eo && eo.isHuman) score += 15;
+        if (eo && eo.artifactAttachedTo === enemy.instanceId) score += 10;
+        if (score > bestScore) { bestScore = score; bestAtk = [q, r, enemy, score]; }
       }
-      if (bestAtk) {
-        this.selectedUnit = unit;
-        this.moveMode = true;
+      if (bestAtk && bestAtk[3] > 0) {
+        this._aiLog("AI", unit.name + " attacca " + bestAtk[2].name + " (score=" + bestAtk[3] + ")");
+        this.selectedUnit = unit; this.moveMode = true;
         this.tryMoveOrAttack(bestAtk[0], bestAtk[1]);
       }
     }
 
-    // --- 5) Movimento: avvicinati al nemico più debole o all'Altare ---
-    const human = this.entities.find(e => e.isHuman && !e.isFallen);
+    // 5) MOVIMENTO: verso nemici umani / altare; EVITA avvizzire se possibile
     for (const unit of [...ai.field]) {
-      if (unit.isWithered) continue;
+      if (unit.isWithered) {
+        this._aiLog("AI", unit.name + " avvizzita: resta ferma");
+        continue;
+      }
       if (unit.movedThisTurn && ai.mana <= 0) continue;
       const { cells } = this.getReachableCells(unit, ai);
-      if (!cells.size) continue;
+      if (!cells || !cells.size) {
+        this._aiLog("AI", unit.name + " nessuna cella raggiungibile");
+        continue;
+      }
       let best = null, bestScore = -1e9;
       for (const [key, info] of cells) {
         const [q, r] = key.split(",").map(Number);
         let score = 0;
-        // Verso creature umane
+        // Verso umani
         if (human && human.field.length) {
           let minD = 99;
-          for (const hu of human.field) {
-            minD = Math.min(minD, hexDistance(q, r, hu.q, hu.r));
-          }
-          score += (20 - minD) * 3;
+          for (const hu of human.field) minD = Math.min(minD, hexDistance(q, r, hu.q, hu.r));
+          score += (25 - minD) * 4;
         }
-        // Verso altare
-        score += (12 - hexDistance(q, r, 0, 0));
-        // Preferisci path economici
-        score -= (info.cost || 0) * 0.5;
-        // Evita di finire avvizziti se non necessario
-        if (!this.isCellDiscovered(q, r, ai)) score -= 8;
-        if (score > bestScore) { bestScore = score; best = { q, r, info }; }
+        // Verso altre minacce
+        for (const ent of this.entities) {
+          if (ent.id === ai.id || ent.isFallen || ent.isHuman) continue;
+          for (const u of ent.field) score += Math.max(0, 10 - hexDistance(q, r, u.q, u.r));
+        }
+        score += (14 - hexDistance(q, r, 0, 0)); // altare
+        score -= (info.cost || 0) * 1.2;
+        // PENALITÀ FORTE se cella non scoperta → avvizzisce
+        if (!this.isCellDiscovered(q, r, ai)) score -= 40;
+        // Bonus cella già scoperta
+        if (this.isCellDiscovered(q, r, ai)) score += 5;
+        if (score > bestScore) { bestScore = score; best = { q, r, info, score }; }
       }
-      if (best) {
-        this.selectedUnit = unit;
-        this.moveMode = true;
+      if (best && best.score > -20) {
+        this._aiLog("AI", unit.name + " muove a (" + best.q + "," + best.r + ") score=" + best.score.toFixed(1) +
+          " discovered=" + this.isCellDiscovered(best.q, best.r, ai) + " cost=" + (best.info.cost || 0));
+        this.selectedUnit = unit; this.moveMode = true;
         this.tryMoveOrAttack(best.q, best.r);
-        // solo una creatura si muove in modo aggressivo per non bruciare tutto il mana
-        break;
+        break; // una mossa aggressiva per turno
+      } else {
+        this._aiLog("AI", unit.name + " nessuna destinazione conveniente (meglio non avvizzire)");
       }
     }
+
+    this._aiLog("AI", "Fine decisioni " + ai.name + " — mana residuo " + ai.mana);
 
     // Salva il timeout così possiamo annullarlo se il turno diventa umano
     if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);

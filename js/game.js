@@ -835,6 +835,7 @@ class GameState {
     unit.q = Number(q);
     unit.r = Number(r);
     unit.movedThisTurn = true;
+    if (typeof this._checkCadutissimoSites === "function") this._checkCadutissimoSites();
     this._revealAround(e, unit.q, unit.r, 2);
     if (!this.isCellDiscovered(unit.q, unit.r, e)) {
       unit.isWithered = true;
@@ -1503,6 +1504,24 @@ class GameState {
     }
   }
 
+
+  _resolveETB(unit, owner) {
+    if (!unit || !unit.effectId) return;
+    try {
+      if (typeof this._resolveEffect !== "function") {
+        const msg = "[ETB] _resolveEffect mancante per " + unit.name + " effectId=" + unit.effectId;
+        this.addLog(msg, true);
+        console.error(msg);
+        return;
+      }
+      this._resolveEffect(unit.effectId, owner, unit);
+    } catch (err) {
+      const msg = "[ETB ERROR] " + (unit && unit.name) + " effectId=" + (unit && unit.effectId) + " — " + (err && err.message);
+      this.addLog(msg, true);
+      console.error(msg, err);
+    }
+  }
+
   _destroyUnit(unit, ctx) {
     if (!unit) return;
     const ent = this.getEntityById(unit.ownerId);
@@ -1628,17 +1647,44 @@ class GameState {
   }
 
 
+  _unitPower(u) {
+    if (!u) return -1;
+    return ((u.atk || 0) + (u.permanentAtkBonus || 0)) + (u.currentHp !== undefined ? u.currentHp : (u.hp || 0));
+  }
+
   _spawnFreeToken(entity) {
     if (!entity.templeKey) return;
     const [tq, tr] = entity.templeKey.split(",").map(Number);
-    // Se il tempio è già occupato, non piazzare
+    const occ = this.getUnitAt(tq, tr);
+    const tokenBase = (typeof FREE_TOKEN !== "undefined") ? FREE_TOKEN : { id: "token_free", name: "Spirito del Tempio", type: "mostro", atk: 1, hp: 1 };
+    const newPow = (tokenBase.atk || 1) + (tokenBase.hp || 1);
+    if (occ) {
+      const sameOwner = occ.ownerId === entity.id;
+      const hasCrown = !!(occ.hasArtifact || (entity.artifactAttachedTo === occ.instanceId));
+      const oldPow = this._unitPower(occ);
+      // Se occupato da alleato più debole senza corona → sostituisci; in dubbio privilegia nuova
+      if (sameOwner && !hasCrown && newPow >= oldPow) {
+        this.addLog(entity.name + ": tempio occupato da " + occ.name + " (potenza " + oldPow + ") → sostituito dallo Spirito", true);
+        this._destroyUnit(occ, {});
+      } else if (sameOwner && hasCrown) {
+        this.addLog(entity.name + ": tempio occupato da " + occ.name + " con Artefatto — Spirito non evocato");
+        return;
+      } else if (sameOwner) {
+        this.addLog(entity.name + ": tempio occupato da " + occ.name + " più forte — Spirito non evocato");
+        return;
+      } else {
+        // Nemico sul tempio: non spawn
+        return;
+      }
+    }
     if (this.getUnitAt(tq, tr)) return;
     const token = {
-      ...FREE_TOKEN,
+      ...tokenBase,
+      name: tokenBase.name || "Spirito del Tempio",
       instanceId: "token_" + entity.id + "_" + this.turnNumber + "_" + Math.random().toString(36).slice(2, 6),
       q: tq,
       r: tr,
-      currentHp: 1,
+      currentHp: tokenBase.hp || 1,
       shields: 0,
       ownerId: entity.id,
       permanentAtkBonus: 0,
@@ -1648,6 +1694,7 @@ class GameState {
     entity.field.push(token);
     this._revealAround(entity, tq, tr, 2);
     this.addLog(entity.name + " riceve Spirito del Tempio (1/1) sul tempio.");
+    this._checkCadutissimoSites();
   }
 
   confirmEndWithoutArtifact() {
@@ -2379,70 +2426,177 @@ class GameState {
     return null;
   }
 
-  _runFallenTurn(ai) {
-    this._aiLog("CADUTO", ai.name + " inizia turno — obiettivo: uccidere creature avversarie (1 passo)");
-    for (const unit of [...ai.field]) {
-      // Cerca la preda più vicina sulla mappa
-      let bestTarget = null, bestDist = 999;
-      for (const ent of this.entities) {
-        if (ent.id === ai.id) continue;
-        for (const u of ent.field) {
-          const d = hexDistance(unit.q, unit.r, u.q, u.r);
-          if (d < bestDist) { bestDist = d; bestTarget = u; }
-        }
-      }
-      if (unit.chaseTargetId) {
-        const t = this.getUnitByInstanceId(unit.chaseTargetId);
-        if (t) { bestTarget = t; bestDist = hexDistance(unit.q, unit.r, t.q, t.r); }
-        else unit.chaseTargetId = null;
-      }
-      if (bestTarget) {
-        unit.chaseTargetId = bestTarget.instanceId;
-        this._aiLog("CADUTO", unit.name + " insegue " + bestTarget.name + " (dist=" + bestDist + ") @(" + bestTarget.q + "," + bestTarget.r + ")");
-        // Se adiacente → attacca
-        if (bestDist <= 1) {
-          this._aiLog("CADUTO", "In range: combatte contro " + bestTarget.name);
-          this._resolveCombat(unit, bestTarget, unit.q, unit.r);
-          continue;
-        }
-        // Muovi di 1 verso il target
-        const nbs = this._hexesInRange(unit.q, unit.r, 1);
-        let best = null, bestD = 999;
-        for (const [q, r] of nbs) {
-          if (CELL_TYPE.get(q + "," + r) === "mountain") continue;
-          const occ = this.getUnitAt(q, r);
-          if (occ && occ.instanceId !== bestTarget.instanceId) continue;
-          const d = hexDistance(q, r, bestTarget.q, bestTarget.r);
-          if (d < bestD) { bestD = d; best = [q, r]; }
-        }
-        if (best) {
-          const occ = this.getUnitAt(best[0], best[1]);
-          if (occ && occ.ownerId !== ai.id) {
-            this._aiLog("CADUTO", "Attacca " + occ.name + " su (" + best[0] + "," + best[1] + ")");
-            this._resolveCombat(unit, occ, unit.q, unit.r);
-          } else if (!occ) {
-            unit.q = best[0]; unit.r = best[1];
-            this._aiLog("CADUTO", unit.name + " avanza a (" + best[0] + "," + best[1] + ") verso " + bestTarget.name);
-          }
-        } else {
-          this._aiLog("CADUTO", unit.name + " bloccato, nessun passo utile");
-        }
-      } else {
-        // Nessuna preda: esplora verso altare
-        const nbs = this._hexesInRange(unit.q, unit.r, 1).filter(([q, r]) => {
-          return CELL_TYPE.get(q + "," + r) !== "mountain" && !this.getUnitAt(q, r);
-        });
-        if (nbs.length) {
-          nbs.sort((a, b) => hexDistance(a[0], a[1], 0, 0) - hexDistance(b[0], b[1], 0, 0));
-          const [q, r] = nbs[0];
-          unit.q = q; unit.r = r;
-          this._aiLog("CADUTO", unit.name + " nessuna preda → va verso Altare (" + q + "," + r + ")");
-        } else {
-          this._aiLog("CADUTO", unit.name + " nessuna mossa possibile");
+
+  _isWalkableCell(q, r) {
+    const t = CELL_TYPE.get(q + "," + r);
+    if (!t || t === "mountain" || t === "teletrasporto") return false;
+    return true;
+  }
+
+  _isFallenUnit(unit) {
+    if (!unit) return false;
+    const e = this.getEntityById(unit.ownerId);
+    return !!(e && e.isFallen);
+  }
+
+  _legalAdjacents(cq, cr) {
+    return this._hexesInRange(cq, cr, 1).filter(([q, r]) => this._isWalkableCell(q, r));
+  }
+
+  /** Altare sempre; Circoli solo se scoperti. Priorità Altare. */
+  _checkCadutissimoSites() {
+    const sites = [{ q: 0, r: 0, key: "0,0", label: "Altare" }];
+    if (this.flippedCells) {
+      for (const key of this.flippedCells) {
+        if (CELL_TYPE.get(key) === "circolo") {
+          const [q, r] = key.split(",").map(Number);
+          sites.push({ q, r, key, label: "Circolo" });
         }
       }
     }
+    // Altare prima
+    sites.sort((a, b) => (a.label === "Altare" ? 0 : 1) - (b.label === "Altare" ? 0 : 1));
+    for (const site of sites) {
+      if (this._tryTriggerCadutissimo(site)) return true;
+    }
+    return false;
   }
+
+  _tryTriggerCadutissimo(site) {
+    const center = this.getUnitAt(site.q, site.r);
+    if (!center || !this._isFallenUnit(center)) return false;
+    const adj = this._legalAdjacents(site.q, site.r);
+    if (!adj.length) return false;
+    for (const [q, r] of adj) {
+      const u = this.getUnitAt(q, r);
+      if (!u || !this._isFallenUnit(u)) return false;
+    }
+    const owner = this.getEntityById(center.ownerId);
+    if (!owner || !owner.isFallen) return false;
+
+    // Rimuovi TUTTE le creature cadute dalla mappa (non toccare umani/IA)
+    let removed = 0;
+    for (const ent of this.entities) {
+      if (!ent.isFallen) continue;
+      for (const u of [...ent.field]) {
+        ent.field = ent.field.filter(x => x.instanceId !== u.instanceId);
+        ent.graveyard.push(u);
+        removed++;
+      }
+      ent.artifactAttachedTo = null;
+    }
+
+    // Mostrissimo con sacrifice più alto dal pool
+    if (!this.mostrissimiPool || !this.mostrissimiPool.length) {
+      console.error("[CADUTISSIMO] pool vuoto — non dovrebbe succedere");
+      return false;
+    }
+    let bi = 0;
+    for (let i = 1; i < this.mostrissimiPool.length; i++) {
+      if ((this.mostrissimiPool[i].sacrifice || 0) > (this.mostrissimiPool[bi].sacrifice || 0)) bi = i;
+    }
+    const best = this.mostrissimiPool[bi];
+    const unit = {
+      ...best,
+      instanceId: "cadutissimo_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      q: site.q,
+      r: site.r,
+      currentHp: best.hp || 1,
+      shields: 0,
+      ownerId: owner.id,
+      permanentAtkBonus: 0,
+      movedThisTurn: false,
+      isWithered: false,
+      isCadutissimo: true,
+      type: best.type || "mostrissimo"
+    };
+    owner.field.push(unit);
+    this._refillMostrissimo(bi);
+    const msg = "[CADUTISSIMO] Condizione su " + site.label + " (" + site.key + ") → rimossi " + removed +
+      " caduti → evocato " + unit.name + " (sacrifice " + (unit.sacrifice || 0) + ") per " + owner.name;
+    this.addLog(msg, true);
+    if (typeof console !== "undefined") console.log(msg, { site, unit: unit.name, owner: owner.name });
+    return true;
+  }
+
+  _runFallenTurn(ai) {
+    this._aiLog("CADUTO", ai.name + " turno — mana " + ai.mana + "/" + ai.manaMax + " | fog personale raggio 2 | movimento random se senza preda");
+    let mana = ai.mana || 0;
+    for (const unit of [...ai.field]) {
+      if (mana <= 0) break;
+      let steps = 0;
+      while (mana > 0) {
+        // Bersaglio: solo se entro visione 2
+        let target = null;
+        if (unit.chaseTargetId) {
+          const t = this.getUnitByInstanceId(unit.chaseTargetId);
+          if (t && hexDistance(unit.q, unit.r, t.q, t.r) <= 2) target = t;
+          else unit.chaseTargetId = null;
+        }
+        if (!target) {
+          for (const ent of this.entities) {
+            if (ent.id === ai.id) continue;
+            for (const u of ent.field) {
+              if (hexDistance(unit.q, unit.r, u.q, u.r) <= 2) {
+                target = u;
+                unit.chaseTargetId = u.instanceId;
+                this._aiLog("CADUTO", unit.name + " avvista " + u.name + " (dist " + hexDistance(unit.q, unit.r, u.q, u.r) + ")");
+                break;
+              }
+            }
+            if (target) break;
+          }
+        }
+        if (target && hexDistance(unit.q, unit.r, target.q, target.r) <= 1) {
+          this._aiLog("CADUTO", unit.name + " attacca " + target.name);
+          this._resolveCombat(unit, target, unit.q, unit.r);
+          mana -= 1;
+          steps++;
+          this._checkCadutissimoSites();
+          break; // dopo combattimento passa alla prossima unità
+        }
+        // Un passo
+        const nbs = this._hexesInRange(unit.q, unit.r, 1).filter(([q, r]) => {
+          if (!this._isWalkableCell(q, r)) return false;
+          const occ = this.getUnitAt(q, r);
+          if (occ && !(target && occ.instanceId === target.instanceId)) return false;
+          return true;
+        });
+        if (!nbs.length) {
+          this._aiLog("CADUTO", unit.name + " bloccato");
+          break;
+        }
+        let best = null;
+        if (target) {
+          let bestD = 999;
+          for (const [q, r] of nbs) {
+            const d = hexDistance(q, r, target.q, target.r);
+            if (d < bestD) { bestD = d; best = [q, r]; }
+          }
+        } else {
+          best = nbs[Math.floor(Math.random() * nbs.length)];
+        }
+        const occ = this.getUnitAt(best[0], best[1]);
+        if (occ && occ.ownerId !== ai.id) {
+          this._aiLog("CADUTO", unit.name + " combatte su (" + best[0] + "," + best[1] + ") vs " + occ.name);
+          this._resolveCombat(unit, occ, unit.q, unit.r);
+          mana -= 1;
+          steps++;
+          this._checkCadutissimoSites();
+          break;
+        }
+        unit.q = best[0];
+        unit.r = best[1];
+        mana -= 1;
+        steps++;
+        this._aiLog("CADUTO", unit.name + (target ? " insegue verso " : " vaga a ") + "(" + best[0] + "," + best[1] + ") manaSx=" + mana);
+        this._checkCadutissimoSites();
+      }
+      this._aiLog("CADUTO", unit.name + " fine — passi " + steps);
+    }
+    ai.mana = 0;
+  }
+
 
   _aiLog(who, msg, data) {
     const line = "[" + who + "] " + msg;
@@ -2654,13 +2808,35 @@ class GameState {
         }
         score += (14 - hexDistance(q, r, 0, 0)); // altare
         score -= (info.cost || 0) * 1.2;
-        // PENALITÀ FORTE se cella non scoperta → avvizzisce
-        if (!this.isCellDiscovered(q, r, ai)) score -= 40;
-        // Bonus cella già scoperta
-        if (this.isCellDiscovered(q, r, ai)) score += 5;
-        if (score > bestScore) { bestScore = score; best = { q, r, info, score }; }
+        // MAI preferire non scoperte se esistono alternative scoperte
+        const disc = this.isCellDiscovered(q, r, ai);
+        if (!disc) score -= 1000;
+        else score += 8;
+        if (score > bestScore) { bestScore = score; best = { q, r, info, score, disc }; }
       }
-      if (best && best.score > -20) {
+      // Se la migliore è non scoperta, cerca una scoperta anche con score peggiore
+      if (best && !best.disc) {
+        let alt = null, altS = -1e9;
+        for (const [key, info] of cells) {
+          const [q, r] = key.split(",").map(Number);
+          if (!this.isCellDiscovered(q, r, ai)) continue;
+          let score = 0;
+          if (human && human.field.length) {
+            let minD = 99;
+            for (const hu of human.field) minD = Math.min(minD, hexDistance(q, r, hu.q, hu.r));
+            score += (25 - minD) * 4;
+          }
+          score += (14 - hexDistance(q, r, 0, 0));
+          score -= (info.cost || 0) * 1.2;
+          score += 8;
+          if (score > altS) { altS = score; alt = { q, r, info, score, disc: true }; }
+        }
+        if (alt) {
+          this._aiLog("AI", unit.name + " evita non-scoperto → alternativa (" + alt.q + "," + alt.r + ")");
+          best = alt;
+        }
+      }
+      if (best && best.score > -500) {
         this._aiLog("AI", unit.name + " muove a (" + best.q + "," + best.r + ") score=" + best.score.toFixed(1) +
           " discovered=" + this.isCellDiscovered(best.q, best.r, ai) + " cost=" + (best.info.cost || 0));
         this.selectedUnit = unit; this.moveMode = true;

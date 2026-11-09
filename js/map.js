@@ -824,15 +824,19 @@ var MapRenderer = {
       const anyUnit = g.getUnitAt(q, r);
       const cellType = CELL_TYPE.get(q + "," + r);
       const isAltar = cellType === "city" || (q === 0 && r === 0);
+      const isMountain = cellType === "mountain";
       const onOwnUnit = !!(anyUnit && anyUnit.ownerId === human.id);
-      const visible = !!g.isVisibleTo(human, q, r);
-      if (!visible && !isAltar && !onOwnUnit) return;
+      const visible = isMountain ? true : !!g.isVisibleTo(human, q, r);
+      // Fog: nulla, eccezioni Altare + Montagne (sempre ispezionabili)
+      if (!visible && !isAltar && !onOwnUnit && !isMountain) return;
       if (typeof window.onHexInspect === "function") {
         try {
-          if (isAltar && !visible && !onOwnUnit) {
-            window.onHexInspect(q, r, null);
+          if (isAltar && !g.isVisibleTo(human, q, r) && !onOwnUnit) {
+            window.onHexInspect(q, r, null, { altarFog: true });
+          } else if (isMountain) {
+            window.onHexInspect(q, r, null, { mountain: true });
           } else {
-            const showUnit = anyUnit && (onOwnUnit || visible) ? anyUnit : null;
+            const showUnit = anyUnit && (onOwnUnit || g.isVisibleTo(human, q, r)) ? anyUnit : null;
             window.onHexInspect(q, r, showUnit);
           }
         } catch (err) {

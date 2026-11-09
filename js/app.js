@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "046";
+const APP_VERSION = "047";
 
 let game = null;
 let currentScreen = "auth";
@@ -1511,6 +1511,7 @@ async function offerResumeOrNew(startNewFn) {
 
 
 
+
 function resolveGame() {
   if (typeof window !== "undefined" && window.game) return window.game;
   if (typeof MapRenderer !== "undefined" && MapRenderer.game) return MapRenderer.game;
@@ -1519,30 +1520,45 @@ function resolveGame() {
 }
 window.resolveGame = resolveGame;
 
-window.onHexInspect = function(q, r, unit) {
+window.onHexInspect = function(q, r, unit, opts) {
   try {
     const g = resolveGame();
     if (!g) { console.warn("onHexInspect: no game"); return; }
-    if (typeof window !== "undefined") window.game = g;
+    window.game = g;
+    opts = opts || {};
     const key = q + "," + r;
     const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
     const human = g.entities.find(e => e.isHuman);
     const discovered = typeof g.isCellDiscovered === "function" ? g.isCellDiscovered(q, r, human) : true;
     let placeName = type;
     let placeDesc = "";
-    if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0") {
-      placeName = "? Terreno inesplorato";
-      placeDesc = "Non ancora scoperto. Il tipo si rivela a fine turno se una creatura termina qui.";
-    } else if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
-      const def = TILE_TYPE_DEFS[type];
-      placeName = (def.icon ? def.icon + " " : "") + (def.name || type);
-      placeDesc = def.desc || "";
-      if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
-        placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
-      }
-    } else if (type === "city" || key === "0,0") {
+
+    if (opts.mountain || type === "mountain") {
+      placeName = "▲ Montagna";
+      placeDesc = "Terreno impervio. Non si può attraversare.";
+    } else if (opts.altarFog || type === "city" || key === "0,0") {
       placeName = "★ Altare";
-      placeDesc = "Casella centrale. Qui si possono evocare i Mostrissimi (con Circoli rituali).";
+      placeDesc = "Casella centrale della mappa. Qui (e sui Circoli rituali) si possono evocare i Mostrissimi dopo i sacrifici richiesti. È un punto strategico conteso.";
+      if (!opts.altarFog && type !== "city" && key !== "0,0") {
+        /* fallthrough normal */
+      }
+    }
+
+    if (!(opts.mountain || type === "mountain") && !(opts.altarFog)) {
+      if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0" && type !== "city") {
+        placeName = "? Terreno inesplorato";
+        placeDesc = "Non ancora scoperto. Il tipo si rivela a fine turno se una creatura termina qui.";
+      } else if (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type]) {
+        const def = TILE_TYPE_DEFS[type];
+        placeName = (def.icon ? def.icon + " " : "") + (def.name || type);
+        placeDesc = def.desc || "";
+        if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
+          placeName = (TEMPLES[key].icon || "") + " " + (TEMPLES[key].name || placeName);
+        }
+      } else if (type === "city" || key === "0,0") {
+        placeName = "★ Altare";
+        placeDesc = "Casella centrale della mappa. Qui (e sui Circoli rituali) si possono evocare i Mostrissimi dopo i sacrifici richiesti.";
+      }
     }
 
     let panel = document.getElementById("hex-inspect-panel");
@@ -1562,7 +1578,9 @@ window.onHexInspect = function(q, r, unit) {
 
     let right = "<div style='flex:1;min-width:220px;max-width:420px;background:#1B2838;border:1px solid #FFD54F;border-radius:12px;padding:18px;'>" +
       "<div style='color:#FFD54F;font-weight:700;font-size:1.15rem;margin-bottom:10px;'>Creatura</div>";
-    if (unit) {
+    if (opts.altarFog) {
+      right += "<div style='opacity:0.9;line-height:1.5;'>Sei troppo distante per notare se è occupato da creature attualmente.</div>";
+    } else if (unit) {
       const owner = g.getEntityById(unit.ownerId);
       const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
       const hp = unit.currentHp !== undefined ? unit.currentHp : unit.hp;
@@ -1604,4 +1622,30 @@ window.onHexInspect = function(q, r, unit) {
     console.error("onHexInspect failed", err);
     alert("Errore ispezione esagono: " + err.message);
   }
+};
+
+window.onArtifactMissingPrompt = function() {
+  const g = resolveGame();
+  if (!g) return;
+  let overlay = document.getElementById("artifact-missing-overlay");
+  if (overlay) overlay.remove();
+  overlay = document.createElement("div");
+  overlay.id = "artifact-missing-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;z-index:6000;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;padding:24px;";
+  overlay.innerHTML = "<div style='max-width:480px;background:#1B2838;border:1px solid #EF5350;border-radius:14px;padding:24px;text-align:center;color:#E0D6C8;'>" +
+    "<div style='font-size:1.2rem;font-weight:700;color:#EF5350;margin-bottom:12px;'>Artefatto assente</div>" +
+    "<div style='line-height:1.55;margin-bottom:18px;'>Non hai l'Artefatto sul campo. Se termini comunque il turno, <strong>diventerai un Caduto</strong> e perderai la partita come giocatore.</div>" +
+    "<div style='display:flex;gap:10px;justify-content:center;flex-wrap:wrap;'>" +
+    "<button class='btn' id='art-miss-cancel'>Torna indietro</button>" +
+    "<button class='btn btn-primary' id='art-miss-ok' style='background:#C62828;'>Termina comunque</button>" +
+    "</div></div>";
+  document.body.appendChild(overlay);
+  document.getElementById("art-miss-cancel").onclick = function() {
+    overlay.remove();
+  };
+  document.getElementById("art-miss-ok").onclick = function() {
+    overlay.remove();
+    if (g.confirmEndWithoutArtifact) g.confirmEndWithoutArtifact();
+    if (typeof window.onGameUpdate === "function") window.onGameUpdate();
+  };
 };

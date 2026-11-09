@@ -1,12 +1,8 @@
 ================================================================================
-BATTLE FOR PENUMBRA – consegna 038 – VERSION: v038
+BATTLE FOR PENUMBRA – consegna 039 – VERSION: v039
 ================================================================================
-FIX CRITICO click:
-- Click su propria creatura → modalità Muovi + pannello dettagli
-- Path proposto non spegne più moveMode
-- Tasto destro / ispezione non spoilano celle con "?"
-
-SUPABASE_SETUP.md: guida opzionale, NON caricare sul sito
-
-FILE: js/map.js, js/app.js, index.html, SUPABASE_SETUP.md
+FIX MapRenderer already declared (var + window)
+FIX startGameUI guard
+cache-bust ?v=039
+contextmenu senza spoiler
 ================================================================================

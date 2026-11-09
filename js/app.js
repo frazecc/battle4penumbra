@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "038";
+const APP_VERSION = "039";
 
 let game = null;
 let currentScreen = "auth";
@@ -542,8 +542,15 @@ function startGameUI() {
   }
   gameUIStarted = true;
   showScreen("game");
-  MapRenderer.init("gameCanvas", game);
-  setTimeout(() => { MapRenderer.center(); MapRenderer.render(); }, 50);
+  const MR = (typeof MapRenderer !== "undefined") ? MapRenderer : window.MapRenderer;
+  if (!MR) {
+    console.error("MapRenderer non caricato — controlla js/map.js");
+    alert("Errore: mappa non caricata. Ricarica la pagina (Ctrl+F5).");
+    gameUIStarted = false;
+    return;
+  }
+  MR.init("gameCanvas", game);
+  setTimeout(() => { MR.center(); MR.render(); }, 50);
   renderGameState();
   if (game && !game.currentEntity.isHuman) {
     setTimeout(() => game.runAITurn(), 900);

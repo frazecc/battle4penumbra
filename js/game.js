@@ -446,7 +446,7 @@ class GameState {
     pack.cards.forEach(card => {
       this.draft.picks[picker.id].push(card);
     });
-    this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color) + " (" + pack.cards.map(c => c.name).join(", ") + ")", true);
+    this.addLog(picker.name + " ha scelto la bustina " + (COLOR_NAMES[pack.color] || pack.color) + ".", true);
     // Rimuovi la bustina scelta
     this.draft.packs.splice(packIndex, 1);
     this.draft.currentPick++;

@@ -320,6 +320,16 @@ var MapRenderer = {
     ctx.fill();
   },
 
+
+  _isMountain(q, r) {
+    return CELL_TYPE.get(q + "," + r) === "mountain";
+  },
+
+  _mountainNeighborDirs(q, r) {
+    const dirs = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+    return dirs.filter(([dq, dr]) => this._isMountain(q + dq, r + dr));
+  },
+
   _drawHex(q, r, type, visible) {
     const { x, y } = this.axialToPixel(q, r);
     const cx = x * this.scale + this.offsetX;
@@ -405,14 +415,14 @@ var MapRenderer = {
       ctx.fill();
       // Picchi
       if (visible) {
-        ctx.fillStyle = "#D7CCC8";
+        const nCount = this._mountainNeighborDirs(q, r).length;
+        ctx.fillStyle = nCount >= 3 ? "#BCAAA4" : "#D7CCC8";
         ctx.strokeStyle = "#4E342E";
         ctx.lineWidth = Math.max(1, 1.2 * this.scale);
-        const peaks = [
-          [cx, cy - s * 0.35],
-          [cx - s * 0.28, cy + s * 0.05],
-          [cx + s * 0.3, cy + s * 0.02]
-        ];
+        // Meno picchi isolati se è in mezzo alla catena
+        const peaks = nCount >= 4
+          ? [[cx, cy - s * 0.22]]
+          : [[cx, cy - s * 0.35], [cx - s * 0.28, cy + s * 0.05], [cx + s * 0.3, cy + s * 0.02]];
         peaks.forEach(([px, py], i) => {
           const h = s * (0.28 - i * 0.04);
           const w = s * 0.16;
@@ -426,6 +436,48 @@ var MapRenderer = {
         });
       }
     }
+
+    // Catena montuosa: tratti interni tra montagne adiacenti quasi invisibili
+    if (type === "mountain") {
+      const dirs = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+      // vertici hex flat-top: i=0..5 corrispondono ai lati verso dirs in ordine pointy-top offset
+      // Usiamo approssimazione: per ogni vicino montagna, non ridisegnare bordo condiviso
+      ctx.lineWidth = Math.max(1.2, 1.8 * this.scale);
+      for (let i = 0; i < 6; i++) {
+        const [dq, dr] = dirs[i];
+        const nq = q + dq, nr = r + dr;
+        const shared = this._isMountain(nq, nr);
+        const a = verts[i];
+        const b = verts[(i + 1) % 6];
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        if (shared) {
+          ctx.strokeStyle = "rgba(62, 39, 35, 0.15)";
+          ctx.lineWidth = Math.max(0.5, 0.7 * this.scale);
+        } else {
+          ctx.strokeStyle = "#2C1810";
+          ctx.lineWidth = Math.max(1.5, 2.2 * this.scale);
+        }
+        ctx.stroke();
+      }
+      // Cresta continua verso i vicini montagna
+      if (visible) {
+        const neigh = this._mountainNeighborDirs(q, r);
+        ctx.strokeStyle = "rgba(215, 204, 200, 0.55)";
+        ctx.lineWidth = Math.max(1.2, 1.6 * this.scale);
+        neigh.forEach(([dq, dr]) => {
+          const p2 = this.axialToPixel(q + dq, r + dr);
+          const x2 = p2.x * this.scale + this.offsetX;
+          const y2 = p2.y * this.scale + this.offsetY;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy - s * 0.15);
+          ctx.lineTo(x2, y2 - s * 0.15);
+          ctx.stroke();
+        });
+      }
+    }
+
 
     ctx.strokeStyle = stroke;
     ctx.lineWidth = Math.max(0.7, 1 * this.scale);
@@ -665,54 +717,10 @@ var MapRenderer = {
       this.render();
     });
 
-        c.addEventListener("contextmenu", e => {
+            c.addEventListener("contextmenu", e => {
       e.preventDefault();
       e.stopPropagation();
-      if (!this.game || this.game.phase !== "playing") return;
-      const rect = c.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
-      const { q, r } = this.pixelToAxial(mx, my);
-      const key = q + "," + r;
-      const type = CELL_TYPE.get(key) || "plain";
-      const unit = this.game.getUnitAt(q, r);
-      const human = this.game.entities.find(en => en.isHuman);
-      const visible = !human || this.game.isVisibleTo(human, q, r) || (unit && human && unit.ownerId === human.id);
-      if (!visible) {
-        if (typeof showCardDetail === "function") {
-          showCardDetail({ name: "Nebbia", type: "luogo", color: "-", cost: "-", effect: "Non puoi vedere questa cella." }, { readOnly: true });
-        }
-        return;
-      }
-      const discovered = this.game.isCellDiscovered(q, r, human);
-      let name, desc;
-      if (!discovered && type !== "mountain" && type !== "temple" && key !== "0,0") {
-        name = "Terreno inesplorato";
-        desc = "Questa cella non è ancora stata scoperta. Il tipo si rivela a fine turno se una creatura ci si trova sopra.";
-      } else {
-        name = (this.game.tileDisplayName && this.game.tileDisplayName(type)) || type;
-        desc = (typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type] && TILE_TYPE_DEFS[type].desc) ? TILE_TYPE_DEFS[type].desc : "";
-        if (type === "temple" && typeof TEMPLES !== "undefined" && TEMPLES[key]) {
-          name = TEMPLES[key].name || name;
-          desc = (TILE_TYPE_DEFS.temple && TILE_TYPE_DEFS.temple.desc) || desc;
-        }
-      }
-      let effect = (desc || ("Cella: " + name)) + "\nCoordinate: (" + q + "," + r + ").";
-      if (unit) {
-        const owner = this.game.getEntityById(unit.ownerId);
-        const atk = (unit.atk || 0) + (unit.permanentAtkBonus || 0);
-        effect += "\n\n— Creatura qui —\n" + unit.name + " (" + atk + "/" + (unit.currentHp || unit.hp || 0) + ")";
-        if (owner) effect += "\nProprietario: " + owner.name + (owner.isFallen ? " [CADUTO]" : "");
-        if (unit.isWithered) effect += "\nStato: AVVIZZITA";
-        if (unit.shields) effect += "\nScudi: " + unit.shields;
-      } else {
-        effect += "\n\nNessuna creatura su questa cella.";
-      }
-      if (typeof showCardDetail === "function") {
-        const showIcon = discovered || type === "temple" || type === "mountain" || key === "0,0";
-        const icon = showIcon && typeof TILE_TYPE_DEFS !== "undefined" && TILE_TYPE_DEFS[type] && TILE_TYPE_DEFS[type].icon ? TILE_TYPE_DEFS[type].icon + " " : "";
-        showCardDetail({ name: icon + name, type: "luogo", color: "-", cost: "-", effect: effect }, { readOnly: true });
-      }
+      // v043: tasto destro non fa nulla (niente dettagli, niente menu browser)
     });
 
 c.addEventListener("click", e => {
@@ -827,12 +835,10 @@ c.addEventListener("click", e => {
                 if (typeof window.onHexInspect === "function") window.onHexInspect(q, r, null);
                 return;
               }
-              // Se è la tua creatura nel tuo turno → entra subito in Muovi
-              if (onOwnUnit && this.game.currentEntity && this.game.currentEntity.isHuman && !anyUnit.isWithered) {
-                this.game.selectUnit(anyUnit.instanceId);
-              }
+              // v043: solo ispezione; Muovi solo dal pulsante nel pannello
               if (typeof window.onHexInspect === "function") {
-                window.onHexInspect(q, r, anyUnit);
+                const showUnit = anyUnit && (onOwnUnit || this.game.isVisibleTo(human, q, r));
+                window.onHexInspect(q, r, showUnit ? anyUnit : null);
               }
               if (window.onGameUpdate) window.onGameUpdate();
               this.render();

@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "042";
+const APP_VERSION = "043";
 
 let game = null;
 let currentScreen = "auth";
@@ -1533,7 +1533,7 @@ window.onHexInspect = function(q, r, unit) {
   if (!panel) {
     panel = document.createElement("div");
     panel.id = "hex-inspect-panel";
-    panel.style.cssText = "position:fixed;inset:0;z-index:2700;background:rgba(0,0,0,0.82);display:flex;align-items:center;justify-content:center;padding:16px;";
+    panel.style.cssText = "position:fixed;inset:0;z-index:2700;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;padding:20px;";
     document.body.appendChild(panel);
   }
   const left = "<div style='flex:1;min-width:200px;background:#1B2838;border:1px solid #64FFDA;border-radius:12px;padding:16px;'>" +

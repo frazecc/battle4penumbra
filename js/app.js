@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "045";
+const APP_VERSION = "046";
 
 let game = null;
 let currentScreen = "auth";
@@ -387,6 +387,7 @@ document.getElementById("btn-start-draft")?.addEventListener("click", () => {
     numAI: numAI,
     numFallenTemples: setupFallen
   });
+  if (typeof window !== "undefined") window.game = game;
   humanDraftPicksDone = 0;
   gameUIStarted = false;
   game.startDraft();
@@ -535,6 +536,8 @@ function renderDraft() {
 // ---------- GAME UI ----------
 let gameUIStarted = false;
 function startGameUI() {
+  if (typeof game !== "undefined" && game && typeof window !== "undefined") window.game = game;
+
   // Evita avvio multiplo (causava timeout IA doppi e chiusura automatica del turno umano)
   if (gameUIStarted && game && game.phase === "playing") {
     console.log("startGameUI ignorato: già avviato");
@@ -843,6 +846,8 @@ function refreshManaUI() {
 }
 window.refreshManaUI = refreshManaUI;
 window.onGameUpdate = function(){
+  if (typeof game !== "undefined" && game) window.game = game;
+
   renderGameState();
   refreshManaUI();
   if (typeof persistGame==='function') persistGame();
@@ -1506,10 +1511,19 @@ async function offerResumeOrNew(startNewFn) {
 
 
 
+function resolveGame() {
+  if (typeof window !== "undefined" && window.game) return window.game;
+  if (typeof MapRenderer !== "undefined" && MapRenderer.game) return MapRenderer.game;
+  if (typeof game !== "undefined" && game) return game;
+  return null;
+}
+window.resolveGame = resolveGame;
+
 window.onHexInspect = function(q, r, unit) {
   try {
-    const g = window.game;
+    const g = resolveGame();
     if (!g) { console.warn("onHexInspect: no game"); return; }
+    if (typeof window !== "undefined") window.game = g;
     const key = q + "," + r;
     const type = (typeof CELL_TYPE !== "undefined" && CELL_TYPE.get(key)) || "plain";
     const human = g.entities.find(e => e.isHuman);

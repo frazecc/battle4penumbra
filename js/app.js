@@ -3,7 +3,7 @@
 // =====================================================
 
 // OBBLIGATORIO: aggiornare a ogni consegna (deve coincidere col numero di consegna)
-const APP_VERSION = "049";
+const APP_VERSION = "051";
 
 let game = null;
 let currentScreen = "auth";
@@ -1447,14 +1447,17 @@ window.onDiscoveryPrompt = function(names) {
 };
 
 window.onSpellTargetPrompt = function(pending) {
+  // v050: un solo click basta; pannello sempre in primo piano
+
   let panel = document.getElementById("spell-target-panel");
   if (!panel) {
     panel = document.createElement("div");
     panel.id = "spell-target-panel";
-    panel.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:2600;background:rgba(13,27,42,0.95);border:1px solid #b39ddb;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-width:260px;";
+    panel.style.cssText = "position:fixed;top:80px;left:50%;transform:translateX(-50%);z-index:5500;background:rgba(13,27,42,0.95);border:1px solid #b39ddb;border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px;min-width:260px;";
     document.body.appendChild(panel);
   }
   const names = (pending.targets || []).map(function(t) { return t.name; }).join(", ");
+  panel.style.display = "flex";
   var canConfirm = pending.selected >= 1 && pending.selected <= pending.need;
   panel.innerHTML =
     "<div style='font-weight:700;color:#b39ddb;'>" + (pending.card && pending.card.name) + "</div>" +
@@ -1533,7 +1536,10 @@ window.onHexInspect = function(q, r, unit, opts) {
     let placeName = type;
     let placeDesc = "";
 
-    if (opts.mountain || type === "mountain") {
+    if (opts.fogPlace) {
+      placeName = "? Terreno coperto dalla nebbia";
+      placeDesc = "Non puoi vedere i dettagli di questa casella (fog of war).";
+    } else if (opts.mountain || type === "mountain") {
       placeName = "▲ Montagna";
       placeDesc = "Terreno impervio. Non si può attraversare.";
     } else if (opts.altarFog || type === "city" || key === "0,0") {
@@ -1649,3 +1655,64 @@ window.onArtifactMissingPrompt = function() {
     if (typeof window.onGameUpdate === "function") window.onGameUpdate();
   };
 };
+
+
+window.onTempleSpiritPrompt = function(info) {
+  let overlay = document.getElementById("temple-spirit-overlay");
+  if (overlay) overlay.remove();
+  overlay = document.createElement("div");
+  overlay.id = "temple-spirit-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;z-index:6100;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;padding:20px;";
+  overlay.innerHTML = "<div style='max-width:460px;background:#1B2838;border:1px solid #64FFDA;border-radius:14px;padding:22px;color:#E0D6C8;text-align:center;'>" +
+    "<div style='font-weight:700;color:#64FFDA;font-size:1.15rem;margin-bottom:10px;'>Tempio occupato</div>" +
+    "<div style='line-height:1.5;margin-bottom:14px;'>Sul tempio c'è <strong>" + (info.unitName || "?") + "</strong> (potenza " + info.oldPow + ").<br>Vuoi sacrificare quella creatura per evocare lo Spirito del Tempio (potenza " + info.newPow + ")?</div>" +
+    "<div style='display:flex;gap:10px;justify-content:center;flex-wrap:wrap;'>" +
+    "<button class='btn' id='ts-no'>Mantieni la creatura</button>" +
+    "<button class='btn btn-primary' id='ts-yes'>Sacrifica ed evoca Spirito</button>" +
+    "</div></div>";
+  document.body.appendChild(overlay);
+  document.getElementById("ts-no").onclick = function() {
+    overlay.remove();
+    const g = resolveGame();
+    if (g && g.confirmTempleSpiritChoice) g.confirmTempleSpiritChoice(false);
+  };
+  document.getElementById("ts-yes").onclick = function() {
+    overlay.remove();
+    const g = resolveGame();
+    if (g && g.confirmTempleSpiritChoice) g.confirmTempleSpiritChoice(true);
+  };
+};
+
+
+// v051 – tab mobile Mappa / Entità / Log
+(function setupMobileGameTabs() {
+  function activate(panel) {
+    document.querySelectorAll(".game-tab").forEach(t => {
+      t.classList.toggle("active", t.getAttribute("data-panel") === panel);
+    });
+    const map = document.getElementById("panel-map");
+    const ent = document.getElementById("panel-entities");
+    const log = document.getElementById("panel-log");
+    if (map) map.classList.toggle("is-active", panel === "map");
+    if (ent) ent.classList.toggle("is-active", panel === "entities");
+    if (log) log.classList.toggle("is-active", panel === "log");
+    if (panel === "map" && typeof MapRenderer !== "undefined") {
+      try {
+        const c = document.getElementById("gameCanvas");
+        if (c && MapRenderer) {
+          const rect = c.parentElement.getBoundingClientRect();
+          // lascia che resize/center gestiscano; forza render
+          if (typeof MapRenderer.center === "function") MapRenderer.center();
+          MapRenderer.render();
+        }
+      } catch (e) {}
+    }
+  }
+  document.addEventListener("click", function(ev) {
+    const t = ev.target && ev.target.closest && ev.target.closest(".game-tab");
+    if (!t) return;
+    activate(t.getAttribute("data-panel") || "map");
+  });
+  // default
+  if (document.getElementById("panel-map")) activate("map");
+})();

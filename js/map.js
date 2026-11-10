@@ -68,7 +68,22 @@ var MapRenderer = {
     return { q: rq, r: rr };
   },
 
+  resizeCanvas() {
+    const c = this.canvas;
+    if (!c) return;
+    const parent = c.parentElement || c;
+    const w = Math.max(1, Math.floor(parent.clientWidth || window.innerWidth));
+    const h = Math.max(1, Math.floor(parent.clientHeight || window.innerHeight * 0.5));
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+  },
+
+  /* v051 mobile resize */
   center() {
+    this.resizeCanvas();
+
     const rect = this.canvas.getBoundingClientRect();
     this.offsetX = rect.width / 2;
     this.offsetY = rect.height / 2;
@@ -114,7 +129,7 @@ var MapRenderer = {
         for (const unit of ent.field) {
           // Sempre visibili le proprie unità; le altre solo se nella fog
           const isOwn = human && unit.ownerId === human.id;
-          const visible = isOwn || (human ? this.game.isVisibleTo(human, unit.q, unit.r) : true);
+          const visible = unit.isCadutissimo || isOwn || (human ? this.game.isVisibleTo(human, unit.q, unit.r) : true);
           if (visible) this._drawUnit(unit, ent);
         }
       }
@@ -826,17 +841,20 @@ var MapRenderer = {
       const isAltar = cellType === "city" || (q === 0 && r === 0);
       const isMountain = cellType === "mountain";
       const onOwnUnit = !!(anyUnit && anyUnit.ownerId === human.id);
+      const isCadutissimo = !!(anyUnit && anyUnit.isCadutissimo);
       const visible = isMountain ? true : !!g.isVisibleTo(human, q, r);
-      // Fog: nulla, eccezioni Altare + Montagne (sempre ispezionabili)
-      if (!visible && !isAltar && !onOwnUnit && !isMountain) return;
+      // Fog: nulla, eccezioni Altare + Montagne + Cadutissimo
+      if (!visible && !isAltar && !onOwnUnit && !isMountain && !isCadutissimo) return;
       if (typeof window.onHexInspect === "function") {
         try {
-          if (isAltar && !g.isVisibleTo(human, q, r) && !onOwnUnit) {
+          if (isCadutissimo && !g.isVisibleTo(human, q, r)) {
+            window.onHexInspect(q, r, anyUnit, { fogPlace: true, cadutissimo: true });
+          } else if (isAltar && !g.isVisibleTo(human, q, r) && !onOwnUnit) {
             window.onHexInspect(q, r, null, { altarFog: true });
           } else if (isMountain) {
             window.onHexInspect(q, r, null, { mountain: true });
           } else {
-            const showUnit = anyUnit && (onOwnUnit || g.isVisibleTo(human, q, r)) ? anyUnit : null;
+            const showUnit = anyUnit && (onOwnUnit || g.isVisibleTo(human, q, r) || anyUnit.isCadutissimo) ? anyUnit : null;
             window.onHexInspect(q, r, showUnit);
           }
         } catch (err) {
@@ -857,4 +875,12 @@ var MapRenderer = {
 }
 
 
+window.addEventListener("resize", function() {
+  if (typeof MapRenderer !== "undefined" && MapRenderer.canvas) {
+    MapRenderer.resizeCanvas();
+    MapRenderer.center();
+    MapRenderer.render();
+  }
+});
 window.MapRenderer = MapRenderer;
+

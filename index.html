@@ -45,7 +45,7 @@
   <!-- HOME -->
   <div id="screen-home" class="screen">
     <header>
-      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v049</span></div>
+      <div class="logo">⚔️ Battle for Penumbra <span id="app-version" style="font-size:0.75rem;opacity:0.7;margin-left:8px;font-weight:400;">v051</span></div>
       <div class="user-info">
         <span>Ciao, <span class="username" id="display-username">-</span></span>
         <button id="btn-logout" class="btn" style="padding:6px 14px;font-size:0.85rem;">Esci</button>
@@ -54,16 +54,6 @@
     <div class="home-content">
       <h1 class="home-title">Benvenuto</h1>
       <div class="home-grid">
-        <div class="home-card" id="btn-resume-game" style="border-color:#64FFDA;">
-          <div style="font-size:1.5rem;margin-bottom:6px;">💾</div>
-          <div style="font-weight:700;">Continua partita</div>
-          <div style="font-size:0.85rem;opacity:0.75;margin-top:4px;">Riprendi l'ultima partita salvata su questo dispositivo</div>
-        </div>
-        <div class="home-card" id="btn-import-save">
-          <div style="font-size:1.5rem;margin-bottom:6px;">📥</div>
-          <div style="font-weight:700;">Importa codice partita</div>
-          <div style="font-size:0.85rem;opacity:0.75;margin-top:4px;">Incolla un codice esportato da un altro dispositivo</div>
-        </div>
         <div class="home-card" id="btn-partita-base">
           <div class="icon">🗺️</div>
           <h3>Partita Base</h3>
@@ -110,40 +100,45 @@
 
   <!-- GAME -->
   <div id="screen-game" class="screen">
+    <div class="game-mobile-tabs" id="game-mobile-tabs">
+      <button type="button" class="game-tab active" data-panel="map">Mappa</button>
+      <button type="button" class="game-tab" data-panel="entities">Entità</button>
+      <button type="button" class="game-tab" data-panel="log">Log</button>
+    </div>
     <div class="game-layout">
-      <div class="game-sidebar">
-        <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700;color:var(--accent);">Entità</div>
+      <div class="game-sidebar" id="panel-entities">
+        <div class="sidebar-title">Entità</div>
         <div id="entities-panel"></div>
-        <div id="mostrissimi-panel" style="padding:12px;border-top:1px solid var(--border);margin-top:8px;"></div>
+        <div id="mostrissimi-panel" class="mostrissimi-panel"></div>
       </div>
 
-      <div class="game-center">
-        <canvas id="gameCanvas" style="flex:1;width:100%;min-height:0;"></canvas>
+      <div class="game-center" id="panel-map">
+        <canvas id="gameCanvas"></canvas>
         <div class="game-hand" id="game-hand"></div>
-        <div class="game-bottombar" id="game-bottombar" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 14px;border-top:1px solid var(--border);background:rgba(13,27,42,0.95);flex-wrap:wrap;">
-          <div class="turn-info" id="turn-info" style="font-weight:700;color:var(--accent);">Turno -</div>
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <span id="mana-info" style="font-size:1.05rem;">Mana: -</span>
-            <button id="btn-cancel-action" class="btn" style="padding:6px 12px;display:none;">Annulla</button>
-            <button id="btn-end-turn" class="btn btn-primary" style="padding:8px 18px;">Termina Turno</button>
+        <div class="game-bottombar" id="game-bottombar">
+          <div class="turn-info" id="turn-info">Turno -</div>
+          <div class="bottombar-actions">
+            <span id="mana-info">Mana: -</span>
+            <button id="btn-cancel-action" class="btn" style="display:none;">Annulla</button>
+            <button id="btn-end-turn" class="btn btn-primary">Termina</button>
           </div>
         </div>
       </div>
 
-      <div class="game-sidebar right">
-        <div style="padding:12px;border-bottom:1px solid var(--border);font-weight:700;color:var(--accent);">Log di Gioco</div>
+      <div class="game-sidebar right" id="panel-log">
+        <div class="sidebar-title">Log di Gioco</div>
         <div class="log-panel" id="game-log"></div>
       </div>
     </div>
   </div>
 
-  <script src="js/data.js?v=049"></script>
+  <script src="js/data.js?v=051"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=049"></script>
-  <script src="js/auth.js?v=049"></script>
-  <script src="js/game.js?v=049"></script>
-  <script src="js/map.js?v=049"></script>
-  <script src="js/app.js?v=049"></script>
+  <script src="js/config.js?v=051"></script>
+  <script src="js/auth.js?v=051"></script>
+  <script src="js/game.js?v=051"></script>
+  <script src="js/map.js?v=051"></script>
+  <script src="js/app.js?v=051"></script>
 
 
 <div id="grave-modal" class="hidden" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:1000;">

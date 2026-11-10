@@ -251,6 +251,13 @@ class GameState {
     }
   }
 
+  isUnitVisibleTo(viewer, unit) {
+    if (!unit) return false;
+    if (unit.isCadutissimo) return true; // sempre visibile
+    if (!viewer) return true;
+    return this.isVisibleTo(viewer, unit.q, unit.r);
+  }
+
   isVisibleTo(entity, q, r) {
     // Se la partita è finita per sconfitta umana, usa lo snapshot congelato
     if (this.frozenVisibility && entity && entity.isHuman) {
@@ -314,21 +321,20 @@ class GameState {
       return entity.field.some(u => u.type === "mostro" || u.type === "mostrissimo" || u.id === "token_free");
     }
 
-    if (t === "maledizione") {
-      // Per semplicità: se ha bisogno di bersaglio, controlla che esista almeno un nemico visibile
+    if (t === "maledizione" || t === "benedizione" || t === "magia" || t === "incantesimo") {
       if (card.needsTarget) {
+        // Alleato o nemico visibile a seconda del testo: se ha target, basta una creatura qualsiasi visibile inclusa propria
         for (const ent of this.entities) {
-          if (ent.id === entity.id || ent.isFallen) continue;
           for (const u of ent.field) {
-            if (this.isVisibleTo(entity, u.q, u.r)) return true;
+            if (ent.id === entity.id || this.isVisibleTo(entity, u.q, u.r)) return true;
           }
         }
-        return false;
+        return entity.field.length > 0;
       }
-      return true; // effetti globali o senza bersaglio
+      return true;
     }
 
-    return true; // altri tipi generici
+    return true;
   }
 
   startDraft() {
@@ -999,6 +1005,18 @@ class GameState {
     } else {
       this.addLog(unit.name + " si muove su (" + unit.q + "," + unit.r + ") (path " + p.path.length + ", mana " + (p.cost || 0) + ")");
     }
+    // Attacco dopo path (click-nemico)
+    if (p.attackTargetId) {
+      const foe = this.getUnitByInstanceId(p.attackTargetId);
+      if (foe && hexDistance(unit.q, unit.r, foe.q, foe.r) === 1) {
+        unit.isWithered = true;
+        this._resolveCombat(unit, foe, unit.q, unit.r);
+        this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
+      } else {
+        this.addLog("Attacco fallito: nemico non più adiacente.");
+      }
+    }
+    if (typeof this._checkCadutissimoSites === "function") this._checkCadutissimoSites();
     this.selectedUnit = null;
     this.moveMode = false;
     return true;
@@ -1039,23 +1057,59 @@ class GameState {
     }
 
     const targetUnit = this.getUnitAt(q, r);
-    // Attacco: solo adiacente
+    // Click su nemico: se adiacente attacca; se no path fino ad adiacente + attacco
     if (targetUnit) {
       if (targetUnit.ownerId === e.id) { this.addLog("Cella alleata!"); return false; }
       const dist = hexDistance(unit.q, unit.r, q, r);
-      if (dist !== 1) { this.addLog("Puoi attaccare solo una creatura adiacente!"); return false; }
-      const cost = unit.movedThisTurn ? 1 : 0;
-      if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
-      e.pay(cost);
-      unit.movedThisTurn = true;
-      unit.isWithered = true;
-      const originQ = unit.q, originR = unit.r;
-      this._resolveCombat(unit, targetUnit, originQ, originR);
-      this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
-      this.selectedUnit = null;
-      this.moveMode = false;
-      this.pendingMovePath = null;
-      return true;
+      if (dist === 1) {
+        const cost = unit.movedThisTurn ? 1 : 0;
+        if (!e.canPay(cost)) { this.addLog("Mana insufficiente!"); return false; }
+        e.pay(cost);
+        unit.movedThisTurn = true;
+        unit.isWithered = true;
+        const originQ = unit.q, originR = unit.r;
+        this._resolveCombat(unit, targetUnit, originQ, originR);
+        this.addLog(unit.name + " ha attaccato e diventa avvizzita.");
+        this.selectedUnit = null;
+        this.moveMode = false;
+        this.pendingMovePath = null;
+        return true;
+      }
+      // Path verso una cella adiacente al nemico
+      const { cells } = this.getReachableCells(unit, e);
+      const adj = this._hexesInRange(q, r, 1);
+      let best = null;
+      for (const [aq, ar] of adj) {
+        if (CELL_TYPE.get(aq + "," + ar) === "mountain") continue;
+        if (this.getUnitAt(aq, ar)) continue;
+        const info = cells.get(aq + "," + ar);
+        if (!info) continue;
+        if (!best || info.cost < best.cost) best = { q: aq, r: ar, cost: info.cost, path: info.path };
+      }
+      // anche cella del nemico non è camminabile; solo adiacenti
+      if (!best) {
+        this.addLog("Nessun percorso con il mana attuale per raggiungere e attaccare " + targetUnit.name + ".");
+        return false;
+      }
+      if (e.isHuman) {
+        this.pendingMovePath = {
+          unitInstanceId: unit.instanceId,
+          path: best.path.map(([qq, rr]) => [Number(qq), Number(rr)]),
+          cost: best.cost,
+          attackTargetId: targetUnit.instanceId
+        };
+        if (typeof window !== "undefined" && window.onMovePathPrompt) {
+          window.onMovePathPrompt(this.pendingMovePath, unit);
+        }
+        return true;
+      }
+      this.pendingMovePath = {
+        unitInstanceId: unit.instanceId,
+        path: best.path,
+        cost: best.cost,
+        attackTargetId: targetUnit.instanceId
+      };
+      return this.confirmMovePath(true);
     }
 
     if (CELL_TYPE.get(q + "," + r) === "mountain") { this.addLog("Montagne invalicabili!"); return false; }
@@ -1171,7 +1225,10 @@ class GameState {
   _resumeAfterTrapPause() {
     if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
     const cur = this.currentEntity;
-    if (cur && !cur.isHuman && this.phase === "playing" && !this.pendingTrapWindow) {
+    if (this.phase === "playing" && !this.pendingTrapWindow && !this.pendingTrap) {
+      // se umano e non sta più risolvendo trappole, niente auto-end
+    }
+    if (cur && !cur.isHuman && this.phase === "playing" && !this.pendingTrapWindow && !this.pendingTrap) {
       if (this._aiEndTurnTimeout) clearTimeout(this._aiEndTurnTimeout);
       this._aiEndTurnTimeout = setTimeout(() => {
         this._aiEndTurnTimeout = null;
@@ -1662,18 +1719,38 @@ class GameState {
       const sameOwner = occ.ownerId === entity.id;
       const hasCrown = !!(occ.hasArtifact || (entity.artifactAttachedTo === occ.instanceId));
       const oldPow = this._unitPower(occ);
-      // Se occupato da alleato più debole senza corona → sostituisci; in dubbio privilegia nuova
-      if (sameOwner && !hasCrown && newPow >= oldPow) {
-        this.addLog(entity.name + ": tempio occupato da " + occ.name + " (potenza " + oldPow + ") → sostituito dallo Spirito", true);
-        this._destroyUnit(occ, {});
-      } else if (sameOwner && hasCrown) {
+      if (!sameOwner) return; // nemico sul tempio
+      if (hasCrown) {
         this.addLog(entity.name + ": tempio occupato da " + occ.name + " con Artefatto — Spirito non evocato");
         return;
-      } else if (sameOwner) {
-        this.addLog(entity.name + ": tempio occupato da " + occ.name + " più forte — Spirito non evocato");
-        return;
+      }
+      // Umano: chiedi sempre (tranne se nuova chiaramente più debole e utente potrebbe voler tenere)
+      if (entity.isHuman) {
+        this.pendingTempleSpirit = { entityId: entity.id, occId: occ.instanceId, tq, tr, oldPow, newPow };
+        if (typeof window !== "undefined" && window.onTempleSpiritPrompt) {
+          window.onTempleSpiritPrompt({
+            unitName: occ.name,
+            oldPow, newPow,
+            entityName: entity.name
+          });
+        } else {
+          console.warn("[TEMPIO] onTempleSpiritPrompt mancante — auto: sostituisci se new>=old");
+          if (newPow >= oldPow) {
+            this._destroyUnit(occ, {});
+            this.pendingTempleSpirit = null;
+          } else {
+            this.pendingTempleSpirit = null;
+            return;
+          }
+        }
+        if (this.pendingTempleSpirit) return;
+      }
+      // IA / Caduti: analisi potenza (in dubbio → nuova)
+      if (newPow >= oldPow) {
+        this.addLog(entity.name + ": tempio occupato da " + occ.name + " (potenza " + oldPow + ") → sostituito dallo Spirito", true);
+        this._destroyUnit(occ, {});
       } else {
-        // Nemico sul tempio: non spawn
+        this.addLog(entity.name + ": tempio occupato da " + occ.name + " più forte (potenza " + oldPow + ") — Spirito non evocato");
         return;
       }
     }
@@ -1695,6 +1772,23 @@ class GameState {
     this._revealAround(entity, tq, tr, 2);
     this.addLog(entity.name + " riceve Spirito del Tempio (1/1) sul tempio.");
     this._checkCadutissimoSites();
+  }
+
+  confirmTempleSpiritChoice(yes) {
+    const p = this.pendingTempleSpirit;
+    this.pendingTempleSpirit = null;
+    if (!p) return;
+    const entity = this.getEntityById(p.entityId);
+    if (!entity) return;
+    if (yes) {
+      const occ = entity.field.find(u => u.instanceId === p.occId);
+      if (occ) this._destroyUnit(occ, {});
+      // re-call spawn without pending
+      this._spawnFreeToken(entity);
+    } else {
+      this.addLog(entity.name + " mantiene " + (p.oldPow) + " sul tempio — Spirito non evocato");
+    }
+    if (typeof window !== "undefined" && window.onGameUpdate) window.onGameUpdate();
   }
 
   confirmEndWithoutArtifact() {
@@ -2523,6 +2617,20 @@ class GameState {
     this._aiLog("CADUTO", ai.name + " turno — mana " + ai.mana + "/" + ai.manaMax + " | fog personale raggio 2 | movimento random se senza preda");
     let mana = ai.mana || 0;
     for (const unit of [...ai.field]) {
+      // Se su un tempio a inizio turno → obbligatorio uscire (non restare)
+      if (CELL_TYPE.get(unit.q + "," + unit.r) === "temple" && mana > 0) {
+        const exits = this._hexesInRange(unit.q, unit.r, 1).filter(([q, r]) => {
+          if (!this._isWalkableCell(q, r)) return false;
+          if (CELL_TYPE.get(q + "," + r) === "temple") return false;
+          return !this.getUnitAt(q, r);
+        });
+        if (exits.length) {
+          const [eq, er] = exits[Math.floor(Math.random() * exits.length)];
+          unit.q = eq; unit.r = er;
+          mana -= 1;
+          this._aiLog("CADUTO", unit.name + " esce obbligatoriamente dal tempio → (" + eq + "," + er + ")");
+        }
+      }
       if (mana <= 0) break;
       let steps = 0;
       while (mana > 0) {
@@ -2560,6 +2668,11 @@ class GameState {
           if (!this._isWalkableCell(q, r)) return false;
           const occ = this.getUnitAt(q, r);
           if (occ && !(target && occ.instanceId === target.instanceId)) return false;
+          // Non entrare in un tempio se non per attaccare un avversario lì
+          const isTemple = CELL_TYPE.get(q + "," + r) === "temple";
+          if (isTemple) {
+            if (!(occ && occ.ownerId !== ai.id)) return false;
+          }
           return true;
         });
         if (!nbs.length) {
@@ -2779,7 +2892,11 @@ class GameState {
       }
     }
 
-    // 5) MOVIMENTO: verso nemici umani / altare; EVITA avvizzire se possibile
+    // 5) MOVIMENTO: fino a esaurimento mana; evita non-scoperte
+    let moveGuard = 0;
+    while (ai.mana > 0 && moveGuard < 8) {
+      moveGuard++;
+      let acted = false;
     for (const unit of [...ai.field]) {
       if (unit.isWithered) {
         this._aiLog("AI", unit.name + " avvizzita: resta ferma");
@@ -2841,12 +2958,15 @@ class GameState {
           " discovered=" + this.isCellDiscovered(best.q, best.r, ai) + " cost=" + (best.info.cost || 0));
         this.selectedUnit = unit; this.moveMode = true;
         this.tryMoveOrAttack(best.q, best.r);
-        break; // una mossa aggressiva per turno
+        acted = true;
+        break;
       } else {
         this._aiLog("AI", unit.name + " nessuna destinazione conveniente (meglio non avvizzire)");
       }
     }
 
+      if (!acted) break;
+    }
     this._aiLog("AI", "Fine decisioni " + ai.name + " — mana residuo " + ai.mana);
 
     // Salva il timeout così possiamo annullarlo se il turno diventa umano
